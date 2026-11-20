@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImpactText · Log</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    main { max-width: 560px; }
+    .mic { width: 100%; padding: 26px 18px; font-size: 22px; border-radius: 18px; display: flex; gap: 12px; align-items: center; justify-content: center; }
+    .mic.listening { background: var(--ok); color: var(--bg); animation: pulse 1.2s infinite; }
+    @keyframes pulse { 50% { opacity: .75; } }
+    .or { text-align: center; margin: 14px 0; }
+    .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .examples button { font-size: 14px; padding: 6px 12px; font-weight: 400; }
+    .save { width: 100%; margin-top: 12px; font-size: 20px; padding: 16px; }
+    .done { background: var(--ok-bg); border-color: transparent; margin-top: 16px; }
+    .done b { color: var(--ok); }
+    .fields { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 15px; margin: 10px 0; }
+    .fields dt { color: var(--muted); }
+    .fields dd { margin: 0; }
+    .row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+<main>
+  <nav>
+    <a class="brand" href="/">ImpactText</a>
+    <a class="tab" href="/" aria-current="page">Log</a>
+    <a class="tab" href="/dashboard">Dashboard</a>
+    <a class="tab" href="/report">Report</a>
+    <a class="tab" href="/phone">Text it</a>
+  </nav>
+
+  <section id="nameStep" class="card hidden">
+    <h1>Welcome 👋</h1>
+    <p class="muted">What's your name? We use it to credit your work. You only do this once.</p>
+    <form id="nameForm" class="grid">
+      <input id="nameInput" placeholder="Your first name" autocomplete="given-name" required>
+      <button>Start</button>
+    </form>
+  </section>
+
+  <section id="logStep" class="hidden">
+    <div class="row" style="margin-bottom:12px">
+      <h1>What did you do?</h1>
+      <span class="small muted">Hi <b id="who"></b> · <a href="#" id="notMe">not you?</a></span>
+    </div>
+
+    <button id="mic" class="mic" type="button" aria-live="polite">🎤 <span id="micLabel">Tap and talk</span></button>
+    <div class="row small muted" style="margin-top:6px">
+      <span id="micHint">Say it like you'd tell a friend.</span>
+      <label>Language <select id="lang" style="width:auto;padding:4px 8px"><option value="en-US">English</option><option value="es-US">Español</option></select></label>
+    </div>
+
+    <p class="or muted small">or type it</p>
+    <form id="logForm">
+      <textarea id="text" placeholder="Fed 20 kids at Sherman Park after school. Sent one mom to 414 LIFE, need to call her back Friday." required></textarea>
+      <div class="examples" aria-label="Examples">
+        <button type="button" class="ghost">Fed 25 people at the cookout on 35th &amp; Center</button>
+        <button type="button" class="ghost">Shooting near Washington Park, sat with the family 3 hours, connected them to 414 LIFE</button>
+        <button type="button" class="ghost">Took 8 teens to play basketball, talked about staying out of beef</button>
+      </div>
+      <button class="save" id="save">Save</button>
+    </form>
+
+    <section id="done" class="card done hidden" aria-live="polite">
+      <b>✓ Saved.</b> <span id="doneText"></span>
+      <dl class="fields" id="fields"></dl>
+      <div class="row">
+        <span class="small muted">Something wrong? Undo, fix it, and save again.</span>
+        <button class="ghost" id="undo" type="button">Undo</button>
+      </div>
+    </section>
+
+    <p class="small muted" style="margin-top:24px">No internet data? You can also <a href="/phone">text it</a> to the ComForce number. Names of people you helped are never stored.</p>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+let worker = store.get('worker');
+let lastId = null, lastText = '';
+let channel = 'web';
+
+function show() {
+  $('nameStep').classList.toggle('hidden', !!worker);
+  $('logStep').classList.toggle('hidden', !worker);
+  if (worker) $('who').textContent = worker;
+}
+$('nameForm').onsubmit = (e) => { e.preventDefault(); worker = $('nameInput').value.trim(); if (worker) { store.set('worker', worker); show(); } };
+$('notMe').onclick = (e) => { e.preventDefault(); store.del('worker'); worker = null; show(); };
+document.querySelectorAll('.examples button').forEach((b) => b.onclick = () => { $('text').value = b.textContent; channel = 'web'; });
+$('lang').value = store.get('lang') || 'en-US';
+$('lang').onchange = () => store.set('lang', $('lang').value);
+
+// --- voice: free, runs in the browser (Chrome, Edge, Safari). Hidden if unsupported.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) { $('mic').classList.add('hidden'); $('micHint').textContent = 'Voice not supported in this browser. Type instead.'; }
+let rec = null;
+$('mic').onclick = () => {
+  if (rec) { rec.stop(); return; }
+  rec = new SR(); rec.lang = $('lang').value; rec.interimResults = true; rec.continuous = true;
+  const before = $('text').value ? $('text').value + ' ' : '';
+  rec.onresult = (ev) => { $('text').value = before + Array.from(ev.results).map((r) => r[0].transcript).join(' '); channel = 'voice'; };
+  rec.onend = () => { rec = null; $('mic').classList.remove('listening'); $('micLabel').textContent = 'Tap and talk'; };
+  rec.onerror = (ev) => { $('micHint').textContent = ev.error === 'not-allowed' ? 'Allow the microphone to use voice.' : 'Voice stopped. Try again or type.'; };
+  rec.start(); $('mic').classList.add('listening'); $('micLabel').textContent = 'Listening… tap when done';
+};
+
+const LABEL = { activity_type: 'Activity', people_served: 'People', youth_served: 'Youth', neighborhood: 'Where', referred_to: 'Referred to', outcome: 'Status', follow_up: 'Next step' };
+$('logForm').onsubmit = async (e) => {
+  e.preventDefault();
+  if (rec) rec.stop();
+  const text = $('text').value.trim(); if (text.length < 3) return;
+  $('save').disabled = true; $('save').textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, worker, channel }) });
+    if (!r.ok) throw new Error(r.status);
+    const { entry } = await r.json();
+    lastId = entry.id; lastText = text;
+    $('doneText').textContent = entry.summary;
+    $('fields').innerHTML = '';
+    for (const [k, label] of Object.entries(LABEL)) {
+      let v = entry[k];
+      if (Array.isArray(v)) v = v.join(', ');
+      if (!v || v === 'unknown') continue;
+      if (typeof v === 'string') v = v.replaceAll('_', ' ');
+      const dt = document.createElement('dt'); dt.textContent = label;
+      const dd = document.createElement('dd'); dd.textContent = v;
+      $('fields').append(dt, dd);
+    }
+    $('done').classList.remove('hidden');
+    $('text').value = ''; channel = 'web';
+  } catch (err) {
+    alert('Could not save. Check your connection and try again. Your note is still in the box.');
+  } finally {
+    $('save').disabled = false; $('save').textContent = 'Save';
+  }
+};
+$('undo').onclick = async () => {
+  if (!lastId) return;
+  await fetch('/api/entries/' + lastId, { method: 'DELETE' });
+  $('done').classList.add('hidden'); lastId = null;
+  $('text').value = lastText; $('text').focus();
+};
+show();
+</script>
+</body>
+</html>

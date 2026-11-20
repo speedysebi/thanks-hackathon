@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImpactText · Text it</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    main { max-width: 460px; }
+    .phone { border: 1px solid var(--line); background: var(--card); border-radius: 28px; padding: 14px; display: flex; flex-direction: column; height: min(640px, 75vh); }
+    .top { text-align: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .thread { flex: 1; overflow-y: auto; padding: 12px 4px; display: flex; flex-direction: column; gap: 8px; }
+    .msg { max-width: 82%; padding: 9px 13px; border-radius: 18px; font-size: 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .me { align-self: flex-end; background: var(--series-1); color: #fff; border-bottom-right-radius: 4px; }
+    .them { align-self: flex-start; background: var(--track); border-bottom-left-radius: 4px; }
+    form { display: flex; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+    form input { border-radius: 999px; }
+    form button { border-radius: 999px; padding: 10px 16px; }
+  </style>
+</head>
+<body>
+<main>
+  <nav>
+    <a class="brand" href="/">ImpactText</a>
+    <a class="tab" href="/">Log</a>
+    <a class="tab" href="/dashboard">Dashboard</a>
+    <a class="tab" href="/report">Report</a>
+    <a class="tab" href="/phone" aria-current="page">Text it</a>
+  </nav>
+  <p class="small muted">Works on any phone, even a flip phone with no data plan. This simulator sends to the same code as the real ComForce number.</p>
+  <div class="phone">
+    <div class="top"><b>ComForce Log</b><div class="small muted" id="num">(414) 555-0142</div></div>
+    <div class="thread" id="thread" aria-live="polite"></div>
+    <form id="f"><input id="body" placeholder="Text message" autocomplete="off" aria-label="Message"><button aria-label="Send">↑</button></form>
+  </div>
+  <p class="small muted">Try: <code>NAME Dee</code>, then <code>handed out 30 coats at Metcalfe Park w/ Repairers of the Breach</code>, then <code>ME</code> or <code>UNDO</code>.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let from;
+try { from = localStorage.getItem('simPhone'); } catch {}
+if (!from) { from = '+1414555' + String(Math.floor(1000 + Math.random() * 9000)); try { localStorage.setItem('simPhone', from); } catch {} }
+function bubble(text, who) {
+  const d = document.createElement('div'); d.className = 'msg ' + who; d.textContent = text;
+  $('thread').append(d); $('thread').scrollTop = $('thread').scrollHeight;
+}
+bubble('Text what you did today. Reply HELP for options.', 'them');
+$('f').onsubmit = async (e) => {
+  e.preventDefault();
+  const Body = $('body').value.trim(); if (!Body) return;
+  $('body').value = ''; bubble(Body, 'me');
+  try {
+    const r = await fetch('/sms', { method: 'POST', body: new URLSearchParams({ From: from, Body }) });
+    const xml = new DOMParser().parseFromString(await r.text(), 'application/xml');
+    bubble(xml.querySelector('Message')?.textContent || 'Error', 'them');
+  } catch { bubble('Not delivered. Try again.', 'them'); }
+};
+</script>
+</body>
+</html>

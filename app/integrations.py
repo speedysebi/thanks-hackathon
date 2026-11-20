@@ -8,7 +8,7 @@ Connections to the apps people already use. No developer accounts or OAuth neede
   Sheets     /feeds/<token>.csv          live data link: Google Sheets =IMPORTDATA(...), Excel Data > From Web, Numbers
   Phones     Siri Shortcut + Android share sheet use the normal POST /api/log (see /connect for setup)
 
-The <token> links work without APP_PASSWORD (calendar apps and Google Sheets can't log in), so the token
+The <token> links work without the admin sign-in (calendar apps and Google Sheets can't log in), so the token
 is the secret. Anyone with the link can read the follow-ups / data: share it like a password, and make a
 new one at /connect if it leaks. Sensitive entries never put details into calendar events.
 """
@@ -227,7 +227,7 @@ def api_integrations(request: Request):
         "local_only": local and not os.getenv("PUBLIC_URL"),
         "https": base.startswith("https://"),
         "lan_url": lan_url(request) if local else None,
-        "password": bool(os.getenv("APP_PASSWORD")),
+        "password": False,  # logging a note (Siri, share) needs no sign-in; only the admin side does
         "calendar_url": cal,
         "webcal_url": "webcal://" + cal.split("://", 1)[1],
         "google_subscribe": "https://calendar.google.com/calendar/r?" + urlencode({"cid": "webcal://" + cal.split("://", 1)[1]}),

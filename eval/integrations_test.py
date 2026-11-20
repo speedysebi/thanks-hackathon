@@ -13,6 +13,7 @@ from app import db
 tmp = Path(tempfile.mkdtemp())
 db.DB_PATH = tmp / "integrations.db"  # never touch the real data
 os.environ.pop("FEED_TOKEN", None)
+os.environ["ADMIN_PASSWORD"] = "test-admin"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -22,6 +23,8 @@ from app.main import app  # noqa: E402
 integrations.TOKEN_FILE = tmp / "feed_token.txt"
 sys.stdout.reconfigure(encoding="utf-8")
 c = TestClient(app)
+assert c.post("/api/auth/login", json={"name": "admin", "pin": "test-admin"}).status_code == 200  # admin side
+anon = TestClient(app)  # a regular person, not signed in
 fails = 0
 
 
@@ -83,23 +86,25 @@ check("new-link · old calendar link stops working", c.get(f"/calendar/{tok}.ics
 tok2 = c.get("/api/integrations").json()["calendar_url"].rsplit("/", 1)[1][:-4]
 check("new-link · new one works", tok2 != tok and c.get(f"/calendar/{tok2}.ics").status_code == 200)
 
-# --- password: feeds stay reachable by token, everything else is locked ---
-os.environ["APP_PASSWORD"] = "pw"
-check("password · calendar feed open with token", c.get(f"/calendar/{tok2}.ics").status_code == 200)
-check("password · csv feed open with token", c.get(f"/feeds/{tok2}.csv").status_code == 200)
-check("password · manifest + sw + icons open", all(c.get(p).status_code == 200 for p in ("/manifest.webmanifest", "/sw.js", "/static/icons/icon-192.png")))
-check("password · /api/followups locked", c.get("/api/followups").status_code == 401)
-check("password · /connect locked", c.get("/connect").status_code == 401)
-check("password · /static/icons/../ can't sneak past", c.get("/static/icons/../style.css").status_code in (401, 404))
-del os.environ["APP_PASSWORD"]
+# --- not signed in: feeds stay reachable by token, the admin side is locked ---
+check("signed out · calendar feed open with token", anon.get(f"/calendar/{tok2}.ics").status_code == 200)
+check("signed out · csv feed open with token", anon.get(f"/feeds/{tok2}.csv").status_code == 200)
+check("signed out · manifest + sw + icons open", all(anon.get(p).status_code == 200 for p in ("/manifest.webmanifest", "/sw.js", "/static/icons/icon-192.png")))
+check("signed out · /api/followups locked", anon.get("/api/followups").status_code == 401)
+check("signed out · /api/integrations (holds the token) locked", anon.get("/api/integrations").status_code == 401)
+check("signed out · /api/entries/<id>.ics locked", anon.get(f"/api/entries/{e1['id']}.ics").status_code == 401)
+r = anon.get("/connect", headers={"accept": "text/html"}, follow_redirects=False)
+check("signed out · /connect sends you to sign in", r.status_code == 303 and r.headers["location"].startswith("/login"))
+check("signed out · /static/../api/entries can't sneak past", anon.get("/static/../api/entries").status_code in (401, 404))
+check("signed out · /calendar/../api/entries can't sneak past", anon.get("/calendar/../api/entries").status_code in (401, 404))
 
 # --- phone app ---
 m = c.get("/manifest.webmanifest")
 check("manifest · served as manifest+json", m.headers["content-type"].startswith("application/manifest+json") and m.json()["share_target"]["action"] == "/")
 check("sw · served from root", c.get("/sw.js").headers["content-type"].startswith("text/javascript"))
-for page in ("/", "/dashboard", "/report", "/phone", "/console", "/connect"):
+for page in ("/", "/dashboard", "/report", "/phone", "/console", "/connect", "/login", "/me", "/team"):
     html = c.get(page).text
-    check(f"page {page} · manifest + install icon + Connect tab", 'rel="manifest"' in html and "apple-touch-icon" in html and 'href="/connect"' in html)
+    check(f"page {page} · manifest + install icon + shared nav", 'rel="manifest"' in html and "apple-touch-icon" in html and "/static/nav.js" in html)
 
 # --- notes typed offline keep their day ---
 two_days_ago = (date.today() - timedelta(days=2)).isoformat()

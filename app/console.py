@@ -13,7 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app import db, extract, llm, privacy, seed
+from app import auth, db, extract, llm, privacy, seed
 
 ROOT = Path(__file__).resolve().parent.parent
 EVAL = ROOT / "eval"
@@ -67,7 +67,7 @@ def status():
         "ai": llm.available(), "model": llm.MODEL, "effort": llm.EFFORT,
         "ai_calls": u["calls"], "ai_failures": u["failures"], "last_ai_error": u["last_error"],
         "twilio": bool(os.getenv("TWILIO_AUTH_TOKEN")), "public_url": os.getenv("PUBLIC_URL") or "",
-        "password": bool(os.getenv("APP_PASSWORD")),
+        "password": bool(auth.admin_password_from_env()),
     }
 
     def step(id, title, done, detail, how="", manual=False, warn=False):
@@ -76,8 +76,6 @@ def status():
     ai_test = next((r for r in ai_rows if r["name"].endswith("test")), None)
     kw_test = next((r for r in results if r["name"].startswith("Keywords v2") and r["name"].endswith("test")), None)
     steps = [
-        step("merge", "Merge PR #1 and #2 together", False,
-             "#1 alone stores phone numbers and addresses typed into notes; #2 fixes it.", manual=True),
         step("key", "Add an Anthropic API key", env["ai"],
              f"AI is on: {env['model']}, effort {env['effort']}." if env["ai"] else "Without a key every note uses the keyword fallback.",
              "Put ANTHROPIC_API_KEY=... in .env, then restart the server."),
@@ -97,9 +95,9 @@ def status():
              f"{test_reviewed}/30 reviewed" + (f", {test_flagged} flagged as wrong." if test_flagged else "."),
              "Use 'Review labels' below. Someone other than the person who wrote them should do it.",
              warn=bool(test_flagged)),
-        step("password", "Set APP_PASSWORD", env["password"],
-             "Pages and API are password-protected." if env["password"] else "Right now anyone with the URL can edit, delete and export entries.",
-             "Put APP_PASSWORD=... in .env and restart. Do this before real data goes in."),
+        step("password", "Choose the admin password", env["password"],
+             "Set in .env." if env["password"] else "The admin side uses a made-up password (data/admin_password.txt, also printed when the server starts).",
+             "Put ADMIN_PASSWORD=... in .env and restart. Share it only with admins."),
         step("twilio", "Connect a real Twilio number", env["twilio"] and bool(env["public_url"]),
              "Signature check is on." if env["twilio"] else "Texts only work through the /phone simulator.",
              "See docs/SMS_SETUP.md; set TWILIO_AUTH_TOKEN and PUBLIC_URL."),
@@ -163,7 +161,9 @@ def robustness():
     """Runs eval/robustness.py in a separate process (it uses its own temporary database)."""
     try:
         p = subprocess.run([sys.executable, "-m", "eval.robustness"], cwd=ROOT, capture_output=True,
-                           text=True, encoding="utf-8", timeout=300, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                           text=True, encoding="utf-8", timeout=300,
+                           # no API key: the checks are about the app, and with a key every check would be a paid AI call
+                           env={**{k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}, "PYTHONIOENCODING": "utf-8"})
     except subprocess.TimeoutExpired:
         raise HTTPException(504, "Robustness checks took over 5 minutes.")
     checks = []

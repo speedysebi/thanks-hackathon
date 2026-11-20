@@ -3,6 +3,7 @@ Throws odd and hostile input at the web and SMS endpoints. Runs against a TEMPOR
   python -m eval.robustness
 Pass = no server errors, valid SMS XML, nothing stored that would break the dashboard.
 """
+import os
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -18,6 +19,8 @@ from app.main import app  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8")
 c = TestClient(app, raise_server_exceptions=False)
+os.environ["ADMIN_PASSWORD"] = "robust-admin"
+c.post("/api/auth/login", json={"name": "admin", "pin": "robust-admin"})  # these checks use admin endpoints too
 
 CASES = [
     ("empty", ""),

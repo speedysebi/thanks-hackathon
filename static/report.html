@@ -13,6 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="ImpactText">
   <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
   <style>
     main { max-width: 820px; }
     .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -34,15 +35,7 @@
 </head>
 <body>
 <main>
-  <nav>
-    <a class="brand" href="/">ImpactText</a>
-    <a class="tab" href="/">Log</a>
-    <a class="tab" href="/dashboard">Dashboard</a>
-    <a class="tab" href="/report" aria-current="page">Report</a>
-    <a class="tab" href="/phone">Text it</a>
-    <a class="tab" href="/console">Console</a>
-    <a class="tab" href="/connect">Connect</a>
-  </nav>
+  <nav data-nav></nav>
   <div class="controls">
     <select id="days" style="width:auto" aria-label="Report period">
       <option value="7">Last 7 days</option><option value="30">Last 30 days</option>

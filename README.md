@@ -26,9 +26,20 @@ python -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env          # add ANTHROPIC_API_KEY for AI; leave blank to use the free keyword extractor
 python -m app.seed --reset      # ~155 SYNTHETIC demo entries over 90 days
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload   # prints the admin password if you didn't set ADMIN_PASSWORD
 ```
-Open http://127.0.0.1:8000. Pages: `/` log · `/dashboard` · `/report` · `/phone` (SMS simulator) · `/console` (testing console: try notes without saving, run the evals and robustness checks, review the eval labels, see the next steps).
+Open http://127.0.0.1:8000.
+
+## Two sides: regular people and admins
+| | Who | Pages | Sign-in |
+|---|---|---|---|
+| **Regular person** | Workers, volunteers | `/` log (type or talk) · `/phone` text simulator · `/me` My notes | **Optional.** Anyone can log and undo what they just saved. An account (name + PIN, made at `/login`) adds My notes: their own totals and follow-ups, and fixing or removing their own notes from any phone. |
+| **Admin** | ComForce staff | `/dashboard` · `/report` · `/connect` (calendars, sheets, phone setup) · `/team` (accounts) · `/console` (testing) · CSV export | **Required.** Name `admin` + `ADMIN_PASSWORD` from `.env`, or any account an admin has promoted on `/team`. |
+
+- Texting (`/sms`) needs no account; texts are tied to the sender's phone.
+- If `ADMIN_PASSWORD` isn't set, the server makes one up, saves it in `data/admin_password.txt` and prints it at startup, so the admin side is never left open by accident.
+- Signed-in sessions are a signed cookie. Changing someone's role or removing their account on `/team` takes effect on their next click. PINs are stored as PBKDF2 hashes, and 5 wrong tries lock that name for 10 minutes.
+- Tests: `python -m eval.auth_test` checks all 47 routes are either public on purpose or admin-only.
 
 ## On phones and in the apps people already use (`/connect`)
 - **Phone app:** add ImpactText to the home screen (iPhone: Share → Add to Home Screen; Android: Install app). Notes saved with no signal stay on the phone and send themselves later, keeping the day they happened.
@@ -37,7 +48,7 @@ Open http://127.0.0.1:8000. Pages: `/` log · `/dashboard` · `/report` · `/pho
 - **Siri** ("Hey Siri, log impact") via the Shortcuts app, and **Android share**: share text from any app to ImpactText.
 - No developer accounts or OAuth: it all uses open formats (iCalendar, CSV, web app manifest).
 - Phones and Google/Microsoft must be able to reach the server: run with `--host 0.0.0.0` for phones on the same Wi-Fi, and use an https address (a tunnel or hosting, then set `PUBLIC_URL`) to install the app and use the calendar and spreadsheet links.
-- The calendar and spreadsheet links skip `APP_PASSWORD` (those apps can't log in) and are protected by a secret token instead. **Anyone with a link can read it**; "Make new links" on `/connect` revokes the old ones. Tests: `python -m eval.integrations_test`.
+- The calendar and spreadsheet links skip the admin sign-in (those apps can't sign in) and are protected by a secret token instead. **Anyone with a link can read it**; "Make new links" on `/connect` revokes the old ones. Tests: `python -m eval.integrations_test`.
 
 ## How it works
 ```
@@ -57,7 +68,8 @@ Typed note ───┘         Claude + JSON schema (strict)
 - The AI only fills in fields. Every number in the report comes from the database, and the report prompt forbids inventing figures.
 - **Never fails in the field.** If the AI is down, the note is still saved by the keyword extractor.
 - `UNDO` only removes your own text from the last 24 hours. Texts are tied to the sender's phone, so two workers who pick the same `NAME` can't undo or merge each other's entries. Phone numbers only ever leave the server as the last 4 digits.
-- **Set `APP_PASSWORD` in `.env` before real data goes in.** Without it, anyone with the URL can see, edit, delete and export entries. With it, every page and API asks for the password (any username); `/sms` stays open because Twilio is verified by signature.
+- **Only admins see everyone's data.** A regular person sees only their own notes, and only if they make an account. Set your own `ADMIN_PASSWORD` in `.env` before real data goes in. `/sms` stays open because Twilio is verified by signature.
+- A note resent by a phone (lost reply, offline queue) carries the same random id, so it counts once even hours later.
 
 ## Measured (details in docs/EXPERIMENTS.md)
 | Extractor | Held-out test notes | Dictation-style notes |
@@ -66,7 +78,7 @@ Typed note ───┘         Claude + JSON schema (strict)
 | Keywords v2 (current free fallback) | **90.6–91.1%** | **91.1%** |
 | Claude | run `python -m eval.run_eval --ai` | |
 
-Also: 56/56 robustness checks, 14/14 browser click-through checks, 200 texts/sec with zero errors, every SMS reply fits one segment.
+Also: 66/66 robustness checks, 82/82 sign-in and access checks, 48/48 calendar/phone-app checks, 36/36 browser checks on an emulated iPhone, Android and desktop (78 page views in light and dark mode), 200 texts/sec with zero errors, every SMS reply fits one segment.
 `/api/stats` shows real latency, token use and cost per note while you demo.
 
 | Command | What it does |
@@ -76,7 +88,9 @@ Also: 56/56 robustness checks, 14/14 browser click-through checks, 200 texts/sec
 | `python -m eval.robustness` | hostile and odd inputs, privacy check |
 | `python -m eval.sms_cost` | SMS segments per reply |
 | `python -m eval.load_test URL N C` | N texts, C at once, against a running server |
-| `python -m eval.browser_test URL` | headless Edge/Chrome click-through |
+| `python -m eval.auth_test` | admin vs regular-person access, every route |
+| `python -m eval.integrations_test` | calendars, spreadsheet links, phone app |
+| `python -m eval.browser_test URL [dir]` | headless Edge/Chrome as iPhone, Android and desktop; saves screenshots (server needs `ADMIN_PASSWORD=sim-admin`) |
 
 ## Cost to run (estimates; check current prices)
 | Item | Monthly |
@@ -86,6 +100,6 @@ Also: 56/56 robustness checks, 14/14 browser click-through checks, 200 texts/sec
 | Hosting (small Render/Railway/Fly instance with a disk) | $0–7 |
 
 ## Not done yet / next
-Login or PIN on the dashboard · per-entry edit form · Spanish SMS replies · scheduled monthly report emailed to ComForce · Google Sheets sync.
+Link a worker's account to their texting phone number · per-entry edit form · Spanish SMS replies · scheduled monthly report emailed to ComForce · Google Sheets sync.
 
 *Demo data is synthetic. No real ComForce records are in this repo.*

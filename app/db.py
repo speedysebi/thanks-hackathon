@@ -36,16 +36,41 @@ CREATE TABLE IF NOT EXISTS workers (
     phone TEXT PRIMARY KEY,
     name  TEXT NOT NULL
 );
+-- optional accounts: regular people can sign in to see and fix their own notes; admins see everything
+CREATE TABLE IF NOT EXISTS users (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    name_key   TEXT NOT NULL UNIQUE,        -- lowercased name, so "Dee" and "dee" are one account
+    pin_hash   TEXT NOT NULL,               -- pbkdf2 salt$hash, never the PIN itself
+    role       TEXT NOT NULL DEFAULT 'worker',  -- worker | admin
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    last_login TEXT
+);
 """
+
+# columns added after the first version; old databases get them on first connect
+_MIGRATIONS = {
+    "phone": "ALTER TABLE entries ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
+    "user_id": "ALTER TABLE entries ADD COLUMN user_id INTEGER",  # set when a signed-in person logs a note
+    "client_id": "ALTER TABLE entries ADD COLUMN client_id TEXT",  # set by the phone so a resent offline note counts once
+}
+_ready: set[str] = set()
 
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.executescript(SCHEMA)
-    if "phone" not in {r["name"] for r in conn.execute("PRAGMA table_info(entries)")}:  # databases made before this column
-        conn.execute("ALTER TABLE entries ADD COLUMN phone TEXT NOT NULL DEFAULT ''")
+    if str(DB_PATH) not in _ready:
+        conn.executescript(SCHEMA)
+        have = {r["name"] for r in conn.execute("PRAGMA table_info(entries)")}
+        for col, sql in _MIGRATIONS.items():
+            if col not in have:
+                conn.execute(sql)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_client ON entries(client_id)")
+        conn.commit()
+        _ready.add(str(DB_PATH))
     return conn
 
 
@@ -63,9 +88,9 @@ def insert(entry: dict) -> dict:
     cols = [
         "activity_date", "worker", "channel", "raw_text", "activity_type", "summary",
         "people_served", "youth_served", "location", "neighborhood", "referred_to",
-        "partners", "outcome", "follow_up", "hours", "sensitive", "extractor", "phone",
+        "partners", "outcome", "follow_up", "hours", "sensitive", "extractor", "phone", "user_id", "client_id",
     ]
-    entry = {"phone": "", **entry}
+    entry = {"phone": "", "user_id": None, "client_id": None, **entry}
     vals = [json.dumps(entry[c]) if c in LIST_FIELDS else entry[c] for c in cols]
     with connect() as conn:
         cur = conn.execute(
@@ -133,6 +158,67 @@ def last_entry_for(phone: str) -> dict | None:
             (phone,),
         ).fetchone()
         return _row(r) if r else None
+
+
+def by_client_id(client_id: str) -> dict | None:
+    """The phone tags each note with a random id; if the same note arrives twice (resent after a lost reply), it's one note."""
+    with connect() as conn:
+        r = conn.execute("SELECT * FROM entries WHERE client_id = ? ORDER BY id LIMIT 1", (client_id,)).fetchone()
+        return _row(r) if r else None
+
+
+def entries_for_user(user_id: int, since: str) -> list[dict]:
+    with connect() as conn:
+        return [_row(r) for r in conn.execute(
+            "SELECT * FROM entries WHERE user_id = ? AND activity_date >= ? ORDER BY activity_date DESC, id DESC",
+            (user_id, since))]
+
+
+# ---------- accounts ----------
+def create_user(name: str, pin_hash: str, role: str = "worker") -> dict | None:
+    """None if the name is taken."""
+    try:
+        with connect() as conn:
+            cur = conn.execute("INSERT INTO users (name, name_key, pin_hash, role) VALUES (?, ?, ?, ?)",
+                               (name, name.lower(), pin_hash, role))
+            return get_user(cur.lastrowid, conn)
+    except sqlite3.IntegrityError:
+        return None
+
+
+def get_user(user_id: int, conn: sqlite3.Connection | None = None) -> dict | None:
+    conn = conn or connect()
+    r = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def user_by_name(name: str) -> dict | None:
+    with connect() as conn:
+        r = conn.execute("SELECT * FROM users WHERE name_key = ?", (name.strip().lower(),)).fetchone()
+        return dict(r) if r else None
+
+
+def list_users() -> list[dict]:
+    with connect() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT u.id, u.name, u.role, u.created_at, u.last_login, COUNT(e.id) AS entries, "
+            "COALESCE(SUM(e.people_served), 0) AS people FROM users u LEFT JOIN entries e ON e.user_id = u.id "
+            "GROUP BY u.id ORDER BY u.role = 'admin' DESC, u.name_key")]
+
+
+def update_user(user_id: int, **fields) -> dict | None:
+    fields = {k: v for k, v in fields.items() if k in ("role", "pin_hash", "last_login") and v is not None}
+    with connect() as conn:
+        if fields:
+            conn.execute(f"UPDATE users SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?", [*fields.values(), user_id])
+        return get_user(user_id, conn)
+
+
+def delete_user(user_id: int) -> bool:
+    """Their notes stay (the work still happened) but are no longer linked to an account."""
+    with connect() as conn:
+        conn.execute("UPDATE entries SET user_id = NULL WHERE user_id = ?", (user_id,))
+        return conn.execute("DELETE FROM users WHERE id = ?", (user_id,)).rowcount > 0
 
 
 def entries_for_phone(phone: str, since: str) -> list[dict]:

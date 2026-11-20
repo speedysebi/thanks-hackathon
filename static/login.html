@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImpactText · Sign in</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
+  <style>
+    main { max-width: 460px; }
+    .switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--track); border-radius: 12px; padding: 4px; margin-bottom: 14px; }
+    .switch button { background: transparent; color: var(--muted); padding: 10px; font-weight: 500; }
+    .switch button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .08); }
+    label { font-size: 15px; display: grid; gap: 6px; }
+    .msg { margin: 0; }
+    .msg:empty { display: none; }
+    .msg.bad { color: var(--accent); }
+    .skip { text-align: center; margin-top: 18px; }
+  </style>
+</head>
+<body>
+<main>
+  <nav data-nav></nav>
+  <section class="card">
+    <h1 id="title" style="margin-bottom:6px">Sign in</h1>
+    <p class="small muted" id="why" style="margin:0 0 14px">Optional for logging notes. With an account you can see your own totals and fix or remove your notes on any phone.</p>
+    <div class="switch" role="group" aria-label="Sign in or make an account">
+      <button type="button" id="tab-in" aria-pressed="true">Sign in</button>
+      <button type="button" id="tab-up" aria-pressed="false">Make an account</button>
+    </div>
+    <form id="form" class="grid">
+      <label>Your name <input id="name" autocomplete="username" required maxlength="40" placeholder="e.g. Dee"></label>
+      <label><span id="pin-label">PIN or password</span>
+        <input id="pin" type="password" autocomplete="current-password" required minlength="4" maxlength="128" inputmode="text"></label>
+      <p class="small muted hidden" id="pin-help" style="margin:-6px 0 0">4+ numbers is fine (like a phone PIN), or a password of 6+ characters. Don't reuse your bank PIN.</p>
+      <button id="go">Sign in</button>
+      <p class="small msg" id="msg" aria-live="polite"></p>
+    </form>
+    <p class="small muted" style="margin:6px 0 0" id="admin-hint">Admins: sign in with the name <b>admin</b> and the admin password.</p>
+  </section>
+  <p class="skip small"><a href="/" id="skip">Skip: log without an account →</a></p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const next = (params.get('next') || '/').startsWith('/') && !(params.get('next') || '').startsWith('//') ? (params.get('next') || '/') : '/';
+const ADMIN_PAGES = ['/dashboard', '/report', '/connect', '/team', '/console'];
+let mode = 'in';
+
+if (ADMIN_PAGES.some((p) => next.startsWith(p))) {
+  $('title').textContent = 'Admins only';
+  $('why').textContent = 'That page is for admins. Sign in with an admin account to open it.';
+  $('tab-up').closest('.switch').classList.add('hidden');
+  $('skip').textContent = '← Back to logging';
+}
+
+function setMode(m) {
+  mode = m;
+  $('tab-in').setAttribute('aria-pressed', m === 'in');
+  $('tab-up').setAttribute('aria-pressed', m === 'up');
+  $('title').textContent = m === 'in' ? ($('title').textContent === 'Admins only' ? 'Admins only' : 'Sign in') : 'Make an account';
+  $('go').textContent = m === 'in' ? 'Sign in' : 'Make my account';
+  $('pin-label').textContent = m === 'in' ? 'PIN or password' : 'Pick a PIN or password';
+  $('pin').autocomplete = m === 'in' ? 'current-password' : 'new-password';
+  $('pin-help').classList.toggle('hidden', m === 'in');
+  $('admin-hint').classList.toggle('hidden', m === 'up');
+  $('msg').textContent = '';
+  $('msg').className = 'small msg';
+}
+$('tab-in').onclick = () => setMode('in');
+$('tab-up').onclick = () => setMode('up');
+const adminOnly = ADMIN_PAGES.some((p) => next.startsWith(p));
+try { const w = localStorage.getItem('worker'); if (w && !adminOnly) $('name').value = w; } catch {}
+
+$('form').onsubmit = async (e) => {
+  e.preventDefault();
+  $('go').disabled = true; $('msg').className = 'small msg'; $('msg').textContent = mode === 'in' ? 'Signing in…' : 'Making your account…';
+  try {
+    const r = await fetch('/api/auth/' + (mode === 'in' ? 'login' : 'signup'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: $('name').value, pin: $('pin').value }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const d = body.detail;
+      throw new Error(typeof d === 'string' ? d : r.status === 422 ? 'Use a PIN of 4+ numbers, or a password of 6+ characters.' : 'Something went wrong.');
+    }
+    try { if (body.role !== 'admin' || body.name !== 'Admin') localStorage.setItem('worker', body.name); } catch {}
+    location.href = body.role === 'admin' && next === '/' ? '/dashboard' : next;
+  } catch (err) {
+    $('msg').className = 'small msg bad'; $('msg').textContent = err.message === 'Failed to fetch' ? 'No connection. Try again.' : err.message;
+    $('go').disabled = false;
+  }
+};
+$('name').focus();
+</script>
+</body>
+</html>

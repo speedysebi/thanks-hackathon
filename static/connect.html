@@ -13,6 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="ImpactText">
   <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
   <style>
     main { max-width: 820px; }
     .stack { display: grid; gap: 14px; }
@@ -41,15 +42,7 @@
 </head>
 <body>
 <main class="stack">
-  <nav style="margin-bottom:4px">
-    <a class="brand" href="/">ImpactText</a>
-    <a class="tab" href="/">Log</a>
-    <a class="tab" href="/dashboard">Dashboard</a>
-    <a class="tab" href="/report">Report</a>
-    <a class="tab" href="/phone">Text it</a>
-    <a class="tab" href="/console">Console</a>
-    <a class="tab" href="/connect" aria-current="page">Connect</a>
-  </nav>
+  <nav data-nav style="margin-bottom:4px"></nav>
   <div>
     <h1>Connect</h1>
     <p class="muted small" style="margin-top:4px">Put ImpactText on your phone, and send follow-ups and numbers to the calendar and spreadsheet apps you already use. No extra accounts needed.</p>
@@ -149,7 +142,7 @@
   <!-- SECURITY -->
   <section class="card stack">
     <h2>🔒 About these links</h2>
-    <p class="small">The calendar and spreadsheet links work without the app password, because calendar apps and Google Sheets can't log in. <b>Anyone with a link can read what it shows</b>, so share them like a password. If one leaks, make new links: the old ones stop working at once (update them where you added them).</p>
+    <p class="small">The calendar and spreadsheet links work without signing in, because calendar apps and Google Sheets can't sign in. <b>Anyone with a link can read what it shows</b>, so share them like a password. If one leaks, make new links: the old ones stop working at once (update them where you added them).</p>
     <div class="row"><button class="ghost small" id="new-link">Make new links</button><span class="small muted" id="new-link-msg"></span></div>
   </section>
 </main>

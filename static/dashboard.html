@@ -13,6 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="ImpactText">
   <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
   <style>
     .head { display: flex; gap: 12px; align-items: end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
     .tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
@@ -52,15 +53,7 @@
 </head>
 <body>
 <main>
-  <nav>
-    <a class="brand" href="/">ImpactText</a>
-    <a class="tab" href="/">Log</a>
-    <a class="tab" href="/dashboard" aria-current="page">Dashboard</a>
-    <a class="tab" href="/report">Report</a>
-    <a class="tab" href="/phone">Text it</a>
-    <a class="tab" href="/console">Console</a>
-    <a class="tab" href="/connect">Connect</a>
-  </nav>
+  <nav data-nav></nav>
 
   <div class="head">
     <div>

@@ -13,6 +13,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="ImpactText">
   <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
   <style>
     main { max-width: 460px; }
     .phone { border: 1px solid var(--line); background: var(--card); border-radius: 28px; padding: 14px; display: flex; flex-direction: column; height: min(640px, 75vh); }
@@ -28,15 +29,7 @@
 </head>
 <body>
 <main>
-  <nav>
-    <a class="brand" href="/">ImpactText</a>
-    <a class="tab" href="/">Log</a>
-    <a class="tab" href="/dashboard">Dashboard</a>
-    <a class="tab" href="/report">Report</a>
-    <a class="tab" href="/phone" aria-current="page">Text it</a>
-    <a class="tab" href="/console">Console</a>
-    <a class="tab" href="/connect">Connect</a>
-  </nav>
+  <nav data-nav></nav>
   <p class="small muted">Works on any phone, even a flip phone with no data plan. This simulator sends to the same code as the real ComForce number.</p>
   <div class="phone">
     <div class="top"><b>ComForce Log</b><div class="small muted" id="num">(414) 555-0142</div></div>

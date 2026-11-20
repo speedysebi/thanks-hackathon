@@ -7,6 +7,7 @@ PAGES
   /dashboard   numbers, charts, follow-ups, recent entries, CSV export
   /report      printable impact report for funders (Print -> Save as PDF)
   /phone       SMS simulator for the demo (same code path as a real text)
+  /console     testing console: try notes, run evals, review labels, next steps
 API
   POST /api/log            {"text", "worker"} -> saved entry + confirmation
   POST /sms                Twilio webhook (form: From, Body) -> TwiML reply
@@ -34,7 +35,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app import db, extract, impact, llm, metrics, privacy
+from app import console, db, extract, impact, llm, metrics, privacy
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = FastAPI(title="ImpactText")
@@ -63,8 +64,10 @@ def page(name: str):
     return lambda: FileResponse(STATIC / name)
 
 
-for route, file in {"/": "index.html", "/dashboard": "dashboard.html", "/report": "report.html", "/phone": "phone.html"}.items():
+for route, file in {"/": "index.html", "/dashboard": "dashboard.html", "/report": "report.html", "/phone": "phone.html", "/console": "console.html"}.items():
     app.add_api_route(route, page(file), methods=["GET"], include_in_schema=False)
+
+app.include_router(console.router)
 
 
 # ---------- logging ----------

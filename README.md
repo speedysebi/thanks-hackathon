@@ -28,7 +28,7 @@ copy .env.example .env          # add ANTHROPIC_API_KEY for AI; leave blank to u
 python -m app.seed --reset      # ~155 SYNTHETIC demo entries over 90 days
 uvicorn app.main:app --reload
 ```
-Open http://127.0.0.1:8000. Pages: `/` log · `/dashboard` · `/report` · `/phone` (SMS simulator).
+Open http://127.0.0.1:8000. Pages: `/` log · `/dashboard` · `/report` · `/phone` (SMS simulator) · `/console` (testing console: try notes without saving, run the evals and robustness checks, review the eval labels, see the next steps).
 
 ## How it works
 ```

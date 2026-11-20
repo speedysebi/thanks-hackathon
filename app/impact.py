@@ -63,6 +63,12 @@ Use ONLY the numbers and examples provided. Never invent figures, names or quote
 Format: plain Markdown. Sections: a 2-3 sentence opening paragraph; "## What we did" (bullets, one per activity type with counts); "## Where" (1-2 sentences); "## Connecting people to help" (referral partners); "## Stories from the field" (2-3 anonymized one-sentence examples taken from the entry summaries); "## Still in progress" (open follow-ups, one line). Under 350 words."""
 
 
+def _story_safe(entries: list[dict]) -> list[dict]:
+    """Entries whose summary can be quoted to funders: not sensitive, and written by the AI
+    (which removes names). Keyword-extracted summaries are the raw note, so they're never quoted."""
+    return [e for e in entries if not e["sensitive"] and e["extractor"] in ("ai", "seed")]
+
+
 def _facts(s: dict, entries: list[dict]) -> str:
     lines = [
         f"Period: last {s['days']} days (since {s['since']})",
@@ -76,7 +82,7 @@ def _facts(s: dict, entries: list[dict]) -> str:
         "Partners: " + "; ".join(f"{o['label']} x{o['count']}" for o in s["partner_orgs"]),
         "Example entry summaries (pick from these, non-sensitive only):",
     ]
-    examples = [e for e in entries if not e["sensitive"]][:25]
+    examples = _story_safe(entries)[:25]
     lines += [f"- {e['summary']}" for e in examples]
     return "\n".join(lines)
 
@@ -96,7 +102,7 @@ def _template(s: dict, entries: list[dict]) -> str:
         (f"We made {s['referrals']} referrals, most often to " + ", ".join(o["label"] for o in s["referral_orgs"][:4]) + ".")
         if s["referral_orgs"] else "No referrals were recorded this period.",
         "## Stories from the field",
-        *[f"- {e['summary']}" for e in [e for e in entries if not e["sensitive"]][:3]],
+        *([f"- {e['summary']}" for e in _story_safe(entries)[:3]] or ["- (No AI-written summaries yet this period.)"]),
         "## Still in progress",
         f"{s['open_follow_ups']} cases are flagged for follow-up.",
     ]

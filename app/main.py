@@ -29,9 +29,11 @@ from xml.sax.saxutils import escape
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from typing import Literal
 
-from app import db, extract, impact, llm, metrics
+from pydantic import BaseModel, Field, field_validator
+
+from app import db, extract, impact, llm, metrics, privacy
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = FastAPI(title="ImpactText")
@@ -52,11 +54,23 @@ class LogIn(BaseModel):
     worker: str = Field(default="Volunteer", max_length=60)
     channel: str = "web"
 
+    @field_validator("text")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        if len(v.strip()) < 3:
+            raise ValueError("note is empty")
+        return v
+
 
 def log_note(text: str, worker: str, channel: str) -> dict:
     start = time.perf_counter()
+    text = privacy.scrub(text.strip()[:2000])  # phone numbers, addresses, "Ms. Johnson" never get stored or sent out
+    worker = worker.strip() or "Volunteer"
+    dup = db.recent_duplicate(worker, text)
+    if dup:
+        return {**dup, "duplicate": True}
     fields = extract.extract(text)
-    entry = db.insert({**fields, "raw_text": text.strip(), "worker": worker.strip() or "Volunteer", "channel": channel})
+    entry = db.insert({**fields, "raw_text": text, "worker": worker, "channel": channel})
     metrics.record("log", (time.perf_counter() - start) * 1000, ok=True, channel=channel, extractor=fields["extractor"])
     return entry
 
@@ -72,9 +86,20 @@ def api_entries(days: int = 90, limit: int = 200):
     return db.list_entries(since=(date.today() - timedelta(days=days)).isoformat(), limit=limit)
 
 
+class EntryPatch(BaseModel):
+    activity_type: Literal[tuple(extract.ACTIVITY_TYPES)] | None = None
+    outcome: Literal[tuple(extract.OUTCOMES)] | None = None
+    summary: str | None = Field(default=None, max_length=300)
+    people_served: int | None = Field(default=None, ge=0, le=5000)
+    youth_served: int | None = Field(default=None, ge=0, le=5000)
+    neighborhood: str | None = Field(default=None, max_length=80)
+    follow_up: str | None = Field(default=None, max_length=300)
+    hours: float | None = Field(default=None, ge=0, le=24)
+
+
 @app.patch("/api/entries/{entry_id}")
-def api_update(entry_id: int, fields: dict):
-    entry = db.update(entry_id, fields)
+def api_update(entry_id: int, body: EntryPatch):
+    entry = db.update(entry_id, body.model_dump(exclude_none=True))
     if not entry:
         raise HTTPException(404)
     return entry
@@ -89,8 +114,8 @@ def api_delete(entry_id: int):
 
 # ---------- SMS (Twilio) ----------
 HELP = (
-    "ImpactText: just text what you did, like 'fed 20 kids at Sherman Park, sent 1 mom to 414 LIFE'. "
-    "Commands: NAME Your Name · UNDO · ME (your totals) · HELP"
+    "Text what you did, like: fed 20 kids at Sherman Park, sent a mom to 414 LIFE. "
+    "Also: NAME + your name, UNDO, ME (your totals)"
 )
 
 
@@ -121,33 +146,35 @@ async def sms(request: Request):
 
     if cmd.startswith("NAME "):
         db.set_worker_name(phone, body[5:].strip()[:60])
-        return _twiml(f"Thanks {body[5:].strip()}! Now just text what you did any time.")
+        return _twiml(f"Thanks {body[5:].strip()[:30]}! Just text what you did any time.")
     if cmd in ("HELP", "?", "INFO"):
         return _twiml(HELP)
     worker = name or f"Volunteer …{phone[-4:]}"
     if cmd == "UNDO":
         last = db.last_entry_for(worker)
         if last and db.delete(last["id"]):
-            return _twiml(f"Removed #{last['id']}: {last['summary'][:80]}")
+            return _twiml(f"Removed #{last['id']}.")
         return _twiml("Nothing to undo.")
     if cmd in ("ME", "TOTAL", "STATS"):
         since = date.today().replace(day=1).isoformat()
         mine = [e for e in db.list_entries(since=since) if e["worker"] == worker]
         people = sum(e["people_served"] for e in mine)
-        return _twiml(f"This month you logged {len(mine)} activities and helped {people} people. Thank you! 🙏")
+        return _twiml(f"This month: {len(mine)} activities, {people} people helped. Thank you!")
     if len(body) < 3:
         return _twiml(HELP)
 
     entry = log_note(body, worker, "sms")
-    reply = extract.confirmation(entry) + ". Reply UNDO to remove."
+    if entry.get("duplicate"):
+        return _twiml(f"Already got that one (#{entry['id']}). Nothing new was added.")
+    reply = extract.confirmation(entry) + " UNDO to remove."
     if not name:
-        reply += " Text NAME + your name so we credit you."
+        reply += " Text NAME + your name for credit."
     return _twiml(reply)
 
 
 # ---------- numbers + report ----------
 def _window(days: int) -> list[dict]:
-    return db.list_entries(since=(date.today() - timedelta(days=days)).isoformat(), limit=5000)
+    return db.list_entries(since=(date.today() - timedelta(days=days)).isoformat(), limit=1_000_000)
 
 
 @app.get("/api/summary")
@@ -194,4 +221,5 @@ def stats():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "model": llm.MODEL, "ai": llm.available()}
+    return {"ok": True, "model": llm.MODEL, "ai": llm.available(),
+            "ai_failures": llm.USAGE["failures"], "last_ai_error": llm.USAGE["last_error"]}

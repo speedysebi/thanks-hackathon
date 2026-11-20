@@ -99,8 +99,18 @@ Rules:
 - summary: one sentence, past tense, plain language, no names of people helped."""
 
 
-def ai_extract(text: str) -> dict:
-    data = llm.json_call(text, system=SYSTEM, schema=SCHEMA)
+# Variant for the prompt experiment (eval/ai_sweep.py). Examples are invented, not taken from eval/ sets.
+SYSTEM_EXAMPLES = SYSTEM + """
+
+Examples (note -> key fields):
+- "fed 15 kids + their 5 moms at the rec, mom of one needs a ride to court tues" -> food_meals, people 20, youth 15, outcome needs_follow_up, follow_up "Give a mother a ride to court Tuesday."
+- "shooting by the corner store on center, stayed w the family, 414 life coming by tmrw" -> crisis_response, people 1, referred_to ["414 LIFE"], outcome in_progress
+- "w/ hunger task force passed out boxes to 80 families" -> food_meals, people 80, partners ["Hunger Task Force"], referred_to [], outcome resolved
+- "checked on the family from the fire, they're good now" -> outreach, people 1, outcome resolved"""
+
+
+def ai_extract(text: str, model: str | None = None, effort: str | None = None, system: str = SYSTEM) -> dict:
+    data = llm.json_call(text, system=system, schema=SCHEMA, model=model, effort=effort)
     data["extractor"] = "ai"
     return data
 
@@ -110,7 +120,7 @@ def _num_before(text: str, words: str) -> int:
     return max(nums) if nums else 0
 
 
-def keyword_extract(text: str) -> dict:
+def keyword_extract_v1(text: str) -> dict:
     t = text.lower()
     rules = [
         ("crisis_response", r"shoot|shot|fire|storm|tornado|flood|crash|emergenc|evict"),
@@ -164,6 +174,13 @@ def keyword_extract(text: str) -> dict:
     }
 
 
+def keyword_extract(text: str) -> dict:
+    """Current keyword extractor (v2, app/rules.py). v1 above is kept for the experiment log."""
+    from app import rules
+
+    return rules.extract(text)
+
+
 def _clean(d: dict) -> dict:
     """Make any extractor's output safe to store, whatever the model returned."""
     if d.get("activity_type") not in ACTIVITY_TYPES:
@@ -172,7 +189,8 @@ def _clean(d: dict) -> dict:
         d["outcome"] = "unknown"
     for k in ("people_served", "youth_served", "days_ago"):
         d[k] = max(0, int(d.get(k) or 0))
-    d["people_served"] = max(d["people_served"], d["youth_served"])
+    d["youth_served"] = min(d["youth_served"], 5000)
+    d["people_served"] = min(max(d["people_served"], d["youth_served"]), 5000)  # a typo can't wreck the dashboard
     d["hours"] = max(0.0, float(d.get("hours") or 0))
     for k in ("referred_to", "partners"):
         d[k] = [KNOWN_ORGS.get(o.lower().strip(), o.strip()) for o in d.get(k) or [] if o.strip()]
@@ -188,24 +206,28 @@ def extract(text: str) -> dict:
         try:
             return _clean(ai_extract(text))
         except Exception as e:  # network down, rate limit, refusal: still save the note
+            llm.USAGE["failures"] += 1
+            llm.USAGE["last_error"] = f"{type(e).__name__}: {e}"[:200]
             print(f"[extract] AI failed, using keywords: {e}")
     return _clean(keyword_extract(text))
 
 
 def confirmation(entry: dict) -> str:
-    """The short text a worker sees after logging. Keep it under one SMS (160 chars) when possible."""
+    """The short text a worker sees after logging.
+    Plain GSM-7 characters only: one "·", "→" or emoji makes a text cost 70-char segments instead of 160."""
     from app.impact import LABELS
 
     bits = [LABELS.get(entry["activity_type"], entry["activity_type"])]
-    if entry["people_served"]:
-        bits.append(f"{entry['people_served']} people" + (f" ({entry['youth_served']} youth)" if entry["youth_served"] else ""))
+    n, y = entry["people_served"], entry["youth_served"]
+    if n:
+        bits.append(f"{n} {'person' if n == 1 else 'people'}" + (f" ({y} youth)" if y else ""))
     if entry["neighborhood"]:
         bits.append(entry["neighborhood"])
     if entry["referred_to"]:
-        bits.append("→ " + ", ".join(entry["referred_to"]))
+        bits.append("ref " + ", ".join(entry["referred_to"]))
     if entry["outcome"] == "needs_follow_up":
         bits.append("follow-up flagged")
-    return "Logged #" + str(entry["id"]) + ": " + " · ".join(bits)
+    return f"Logged #{entry['id']}: " + ", ".join(bits) + "."
 
 
 if __name__ == "__main__":  # quick manual test: python -m app.extract "fed 12 kids at sherman park"

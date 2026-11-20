@@ -1,9 +1,10 @@
 """SQLite storage. One file (data/impact.db) the organization owns: copy it, back it up, export it as CSV."""
 import json
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "impact.db"
+DB_PATH = Path(os.getenv("IMPACT_DB") or Path(__file__).resolve().parent.parent / "data" / "impact.db")
 
 LIST_FIELDS = ("referred_to", "partners")
 
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS entries (
     sensitive     INTEGER NOT NULL DEFAULT 0,
     extractor     TEXT NOT NULL DEFAULT 'ai'
 );
+CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(activity_date);
 CREATE TABLE IF NOT EXISTS workers (
     phone TEXT PRIMARY KEY,
     name  TEXT NOT NULL
@@ -100,6 +102,17 @@ def update(entry_id: int, fields: dict) -> dict | None:
 def delete(entry_id: int) -> bool:
     with connect() as conn:
         return conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,)).rowcount > 0
+
+
+def recent_duplicate(worker: str, raw_text: str, minutes: int = 10) -> dict | None:
+    """Same person, same words, a few minutes apart = a double send (bad signal, double tap). Don't count it twice."""
+    with connect() as conn:
+        r = conn.execute(
+            "SELECT * FROM entries WHERE worker = ? AND lower(trim(raw_text)) = lower(trim(?)) "
+            "AND created_at >= datetime('now','localtime',?) ORDER BY id DESC LIMIT 1",
+            (worker, raw_text, f"-{int(minutes)} minutes"),
+        ).fetchone()
+        return _row(r) if r else None
 
 
 def last_entry_for(worker: str, channel: str = "sms") -> dict | None:

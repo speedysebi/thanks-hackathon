@@ -1,8 +1,9 @@
 """
 How accurately do we turn field notes into records? Compares the free keyword BASELINE with the AI.
-  python -m eval.run_eval              # keywords only (free)
-  python -m eval.run_eval --ai         # keywords vs AI (needs ANTHROPIC_API_KEY; ~30 calls)
-Labels live in eval/notes.jsonl. Add real (anonymized) notes from ComForce as you get them.
+  python -m eval.run_eval              # keywords only (free), dev + test sets
+  python -m eval.run_eval --ai         # keywords vs AI (needs ANTHROPIC_API_KEY; ~60 calls)
+  python -m eval.run_eval -v --set dev # show every miss on one set
+Labels: eval/dev.jsonl (tune on this) and eval/test.jsonl (held out: report this, don't tune on it).
 """
 import json
 import sys
@@ -14,7 +15,9 @@ from app import extract, llm
 sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles
 
 FIELDS = ["activity_type", "people_served", "youth_served", "neighborhood", "referred_to", "outcome"]
-NOTES = [json.loads(line) for line in (Path(__file__).parent / "notes.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+def load(name: str) -> list[dict]:
+    path = Path(__file__).parent / f"{name}.jsonl"
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def match(field: str, got, want) -> bool:
@@ -26,7 +29,7 @@ def match(field: str, got, want) -> bool:
     return got == want
 
 
-def run(name: str, fn) -> dict:
+def run(name: str, fn, NOTES: list[dict]) -> dict:
     per_field = {f: 0 for f in FIELDS}
     all_right, misses, start = 0, [], time.perf_counter()
     for n in NOTES:
@@ -57,16 +60,25 @@ def show(r: dict, verbose: bool) -> None:
 
 if __name__ == "__main__":
     verbose = "-v" in sys.argv
-    results = [run("Keyword baseline (free)", extract.keyword_extract)]
+    sets = [sys.argv[sys.argv.index("--set") + 1]] if "--set" in sys.argv else ["dev", "test", "voice"]
+    extractors = [("Keywords v2 (free)", extract.keyword_extract)]
+    if "--v1" in sys.argv:
+        extractors.insert(0, ("Keywords v1", extract.keyword_extract_v1))
     if "--ai" in sys.argv:
         if not llm.available():
             sys.exit("Set ANTHROPIC_API_KEY in .env to run the AI eval.")
-        results.append(run(f"AI ({llm.MODEL})", extract.ai_extract))
-    for r in results:
-        show(r, verbose)
+        extractors.append((f"AI ({llm.MODEL}, effort {llm.EFFORT})", extract.ai_extract))
+    results = []
+    for split in sets:
+        for name, fn in extractors:
+            r = run(f"{name} · {split}", fn, load(split))
+            show(r, verbose)
+            results.append(r)
     if llm.USAGE["calls"]:
         u = llm.USAGE
-        print(f"\nAI tokens: {u['input_tokens']} in / {u['output_tokens']} out over {u['calls']} calls")
+        print()
+        print(f"AI tokens: {u['input_tokens']} in / {u['output_tokens']} out over {u['calls']} calls")
     out = Path(__file__).parent / "results.json"
     out.write_text(json.dumps([{k: v for k, v in r.items() if k != "misses"} for r in results], indent=2))
-    print(f"\nSaved {out}")
+    print()
+    print(f"Saved {out}")

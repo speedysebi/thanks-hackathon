@@ -47,7 +47,8 @@ Typed note ───┘         Claude + JSON schema (strict)
 - A text sent twice (bad signal, double tap) is only counted once.
 - The AI only fills in fields. Every number in the report comes from the database, and the report prompt forbids inventing figures.
 - **Never fails in the field.** If the AI is down, the note is still saved by the keyword extractor.
-- `UNDO` only removes your own text from the last 24 hours.
+- `UNDO` only removes your own text from the last 24 hours. Texts are tied to the sender's phone, so two workers who pick the same `NAME` can't undo or merge each other's entries. Phone numbers only ever leave the server as the last 4 digits.
+- **Set `APP_PASSWORD` in `.env` before real data goes in.** Without it, anyone with the URL can see, edit, delete and export entries. With it, every page and API asks for the password (any username); `/sms` stays open because Twilio is verified by signature.
 
 ## Measured (details in docs/EXPERIMENTS.md)
 | Extractor | Held-out test notes | Dictation-style notes |

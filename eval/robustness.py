@@ -81,5 +81,31 @@ check("patch · bad values rejected", r.status_code in (200, 422) and (r.status_
 r = c.get("/api/entries")
 check("db still intact after sql case", r.status_code == 200 and len(r.json()) > 0)
 
+# --- privacy scrub must not eat headcounts ---
+for note, want in [("took 12 teens to court", 12), ("drove 15 families way out to the pantry", 15),
+                   ("mentored 12 boys at Dr. Martin Luther King Dr", 12)]:
+    e = c.post("/api/log", json={"text": note, "worker": "Counts"}).json()["entry"]
+    check(f"privacy · count kept: {note!r}", e["people_served"] == want and str(want) in e["raw_text"],
+          f"people={e['people_served']} raw={e['raw_text']!r}")
+
+
+def sms(phone, body):
+    return ET.fromstring(c.post("/sms", data={"From": phone, "Body": body}).text).findtext("Message")
+
+
+# --- two phones, same name: UNDO / ME / duplicate check stay per phone ---
+A, B = "+14145550111", "+14145550222"
+sms(A, "NAME Maria"); sms(B, "NAME Maria")
+sms(A, "fed 7 kids at sherman park")
+check("sms · UNDO can't remove someone else's entry", sms(B, "UNDO") == "Nothing to undo.")
+check("sms · same note from 2 phones both count", "Already got" not in sms(B, "fed 7 kids at sherman park"))
+check("sms · ME counts only this phone", "1 activities" in sms(A, "ME"))
+check("sms · UNDO removes own entry", sms(A, "UNDO").startswith("Removed"))
+reply = sms(A, "Name tags made for 30 kids at the rec")
+check("sms · note starting with 'Name' is logged, not a rename", reply.startswith("Logged"), reply)
+check("api · worker phones are masked", all(not e["phone"] or e["phone"].startswith("…") for e in c.get("/api/entries").json()))
+e = c.post("/api/log", json={"text": "worked 300 hours on the food drive", "worker": "Hours"}).json()["entry"]
+check("extract · hours capped at 24", e["hours"] <= 24, f"hours={e['hours']}")
+
 print(f"\n{fails} failure(s)")
 sys.exit(1 if fails else 0)

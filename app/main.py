@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import io
 import os
+import re
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -38,6 +39,24 @@ from app import db, extract, impact, llm, metrics, privacy
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = FastAPI(title="ImpactText")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+@app.middleware("http")
+async def require_password(request: Request, call_next):
+    """Set APP_PASSWORD in .env before real data goes in: then the dashboard, API and export need it
+    (browser login box: any username + that password). /sms stays open for Twilio, which is checked by signature."""
+    password = os.getenv("APP_PASSWORD")
+    if password and request.url.path != "/sms":
+        given = ""
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Basic "):
+            try:
+                given = base64.b64decode(auth[6:]).decode().partition(":")[2]
+            except ValueError:
+                pass
+        if not hmac.compare_digest(given.encode(), password.encode()):
+            return Response("Password required", status_code=401, headers={"WWW-Authenticate": 'Basic realm="ImpactText"'})
+    return await call_next(request)
 
 
 def page(name: str):
@@ -62,15 +81,15 @@ class LogIn(BaseModel):
         return v
 
 
-def log_note(text: str, worker: str, channel: str) -> dict:
+def log_note(text: str, worker: str, channel: str, phone: str = "") -> dict:
     start = time.perf_counter()
     text = privacy.scrub(text.strip()[:2000])  # phone numbers, addresses, "Ms. Johnson" never get stored or sent out
     worker = worker.strip() or "Volunteer"
-    dup = db.recent_duplicate(worker, text)
+    dup = db.recent_duplicate(worker, text, phone)
     if dup:
         return {**dup, "duplicate": True}
     fields = extract.extract(text)
-    entry = db.insert({**fields, "raw_text": text, "worker": worker, "channel": channel})
+    entry = db.insert({**fields, "raw_text": text, "worker": worker, "channel": channel, "phone": phone})
     metrics.record("log", (time.perf_counter() - start) * 1000, ok=True, channel=channel, extractor=fields["extractor"])
     return entry
 
@@ -113,6 +132,9 @@ def api_delete(entry_id: int):
 
 
 # ---------- SMS (Twilio) ----------
+# "NAME Maria" / "NAME Maria Lopez". A note that just starts with the word ("Name tags for 30 kids") is a note.
+NAME_CMD = re.compile(r"^name\s+([^\d\s][^\d]{0,40}?)\s*$", re.IGNORECASE)
+
 HELP = (
     "Text what you did, like: fed 20 kids at Sherman Park, sent a mom to 414 LIFE. "
     "Also: NAME + your name, UNDO, ME (your totals)"
@@ -144,26 +166,28 @@ async def sms(request: Request):
     name = db.worker_name(phone)
     cmd = body.upper()
 
-    if cmd.startswith("NAME "):
-        db.set_worker_name(phone, body[5:].strip()[:60])
-        return _twiml(f"Thanks {body[5:].strip()[:30]}! Just text what you did any time.")
+    named = NAME_CMD.match(body)
+    if named and len(named.group(1).split()) <= 3:
+        new_name = named.group(1).strip()[:60]
+        db.set_worker_name(phone, new_name)
+        return _twiml(f"Thanks {new_name[:30]}! Just text what you did any time.")
     if cmd in ("HELP", "?", "INFO"):
         return _twiml(HELP)
     worker = name or f"Volunteer …{phone[-4:]}"
     if cmd == "UNDO":
-        last = db.last_entry_for(worker)
+        last = db.last_entry_for(phone)  # by phone, so a shared or copied name can't undo someone else's entry
         if last and db.delete(last["id"]):
             return _twiml(f"Removed #{last['id']}.")
         return _twiml("Nothing to undo.")
     if cmd in ("ME", "TOTAL", "STATS"):
         since = date.today().replace(day=1).isoformat()
-        mine = [e for e in db.list_entries(since=since) if e["worker"] == worker]
+        mine = db.entries_for_phone(phone, since)
         people = sum(e["people_served"] for e in mine)
         return _twiml(f"This month: {len(mine)} activities, {people} people helped. Thank you!")
     if len(body) < 3:
         return _twiml(HELP)
 
-    entry = log_note(body, worker, "sms")
+    entry = log_note(body, worker, "sms", phone)
     if entry.get("duplicate"):
         return _twiml(f"Already got that one (#{entry['id']}). Nothing new was added.")
     reply = extract.confirmation(entry) + " UNDO to remove."

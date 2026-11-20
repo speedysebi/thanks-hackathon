@@ -75,7 +75,8 @@ def _facts(s: dict, entries: list[dict]) -> str:
         f"Activities logged: {s['entries']} by {s['workers']} workers/volunteers",
         f"People served: {s['people_served']} (youth: {s['youth_served']})",
         f"Referrals made: {s['referrals']}; volunteer hours recorded: {s['hours']}",
-        f"Open follow-ups: {s['open_follow_ups']}; resolved rate where known: {s['resolved_rate']}%",
+        f"Open follow-ups: {s['open_follow_ups']}; resolved rate where known: "
+        + (f"{s['resolved_rate']}%" if s["resolved_rate"] is not None else "not enough outcomes recorded"),
         "By activity: " + "; ".join(f"{t['label']} {t['entries']} activities / {t['people']} people" for t in s["by_type"]),
         "By neighborhood (people): " + "; ".join(f"{h['label']} {h['people']}" for h in s["by_neighborhood"]),
         "Referred to: " + "; ".join(f"{o['label']} x{o['count']}" for o in s["referral_orgs"]),

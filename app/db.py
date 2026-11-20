@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS entries (
     follow_up     TEXT NOT NULL DEFAULT '',
     hours         REAL NOT NULL DEFAULT 0,
     sensitive     INTEGER NOT NULL DEFAULT 0,
-    extractor     TEXT NOT NULL DEFAULT 'ai'
+    extractor     TEXT NOT NULL DEFAULT 'ai',
+    phone         TEXT NOT NULL DEFAULT ''  -- SMS sender; identifies the worker for UNDO/ME (names can be shared)
 );
 CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(activity_date);
 CREATE TABLE IF NOT EXISTS workers (
@@ -43,6 +44,8 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    if "phone" not in {r["name"] for r in conn.execute("PRAGMA table_info(entries)")}:  # databases made before this column
+        conn.execute("ALTER TABLE entries ADD COLUMN phone TEXT NOT NULL DEFAULT ''")
     return conn
 
 
@@ -51,6 +54,8 @@ def _row(r: sqlite3.Row) -> dict:
     for f in LIST_FIELDS:
         d[f] = json.loads(d[f] or "[]")
     d["sensitive"] = bool(d["sensitive"])
+    if d.get("phone"):  # identify the sender without handing out workers' full numbers
+        d["phone"] = "…" + d["phone"][-4:]
     return d
 
 
@@ -58,8 +63,9 @@ def insert(entry: dict) -> dict:
     cols = [
         "activity_date", "worker", "channel", "raw_text", "activity_type", "summary",
         "people_served", "youth_served", "location", "neighborhood", "referred_to",
-        "partners", "outcome", "follow_up", "hours", "sensitive", "extractor",
+        "partners", "outcome", "follow_up", "hours", "sensitive", "extractor", "phone",
     ]
+    entry = {"phone": "", **entry}
     vals = [json.dumps(entry[c]) if c in LIST_FIELDS else entry[c] for c in cols]
     with connect() as conn:
         cur = conn.execute(
@@ -104,26 +110,35 @@ def delete(entry_id: int) -> bool:
         return conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,)).rowcount > 0
 
 
-def recent_duplicate(worker: str, raw_text: str, minutes: int = 10) -> dict | None:
-    """Same person, same words, a few minutes apart = a double send (bad signal, double tap). Don't count it twice."""
+def recent_duplicate(worker: str, raw_text: str, phone: str = "", minutes: int = 10) -> dict | None:
+    """Same person, same words, a few minutes apart = a double send (bad signal, double tap). Don't count it twice.
+    "Same person" = same phone for texts (two workers can share a name), same worker name for the web."""
     with connect() as conn:
         r = conn.execute(
-            "SELECT * FROM entries WHERE worker = ? AND lower(trim(raw_text)) = lower(trim(?)) "
+            "SELECT * FROM entries WHERE worker = ? AND phone = ? AND lower(trim(raw_text)) = lower(trim(?)) "
             "AND created_at >= datetime('now','localtime',?) ORDER BY id DESC LIMIT 1",
-            (worker, raw_text, f"-{int(minutes)} minutes"),
+            (worker, phone, raw_text, f"-{int(minutes)} minutes"),
         ).fetchone()
         return _row(r) if r else None
 
 
-def last_entry_for(worker: str, channel: str = "sms") -> dict | None:
-    """The worker's own most recent entry from the last 24h (UNDO never reaches older records)."""
+def last_entry_for(phone: str) -> dict | None:
+    """This phone's own most recent text from the last 24h (UNDO never reaches older records or anyone else's)."""
+    if not phone:
+        return None
     with connect() as conn:
         r = conn.execute(
-            "SELECT * FROM entries WHERE worker = ? AND channel = ? AND extractor != 'seed' "
+            "SELECT * FROM entries WHERE phone = ? AND channel = 'sms' AND extractor != 'seed' "
             "AND created_at >= datetime('now','localtime','-1 day') ORDER BY id DESC LIMIT 1",
-            (worker, channel),
+            (phone,),
         ).fetchone()
         return _row(r) if r else None
+
+
+def entries_for_phone(phone: str, since: str) -> list[dict]:
+    with connect() as conn:
+        return [_row(r) for r in conn.execute(
+            "SELECT * FROM entries WHERE phone = ? AND activity_date >= ? ORDER BY id DESC", (phone, since))]
 
 
 def worker_name(phone: str) -> str | None:

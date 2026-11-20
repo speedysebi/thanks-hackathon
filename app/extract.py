@@ -191,7 +191,7 @@ def _clean(d: dict) -> dict:
         d[k] = max(0, int(d.get(k) or 0))
     d["youth_served"] = min(d["youth_served"], 5000)
     d["people_served"] = min(max(d["people_served"], d["youth_served"]), 5000)  # a typo can't wreck the dashboard
-    d["hours"] = max(0.0, float(d.get("hours") or 0))
+    d["hours"] = min(max(0.0, float(d.get("hours") or 0)), 24.0)  # same limit as editing an entry
     for k in ("referred_to", "partners"):
         d[k] = [KNOWN_ORGS.get(o.lower().strip(), o.strip()) for o in d.get(k) or [] if o.strip()]
     hood = (d.get("neighborhood") or "").strip()

@@ -30,6 +30,15 @@ uvicorn app.main:app --reload
 ```
 Open http://127.0.0.1:8000. Pages: `/` log · `/dashboard` · `/report` · `/phone` (SMS simulator) · `/console` (testing console: try notes without saving, run the evals and robustness checks, review the eval labels, see the next steps).
 
+## On phones and in the apps people already use (`/connect`)
+- **Phone app:** add ImpactText to the home screen (iPhone: Share → Add to Home Screen; Android: Install app). Notes saved with no signal stay on the phone and send themselves later, keeping the day they happened.
+- **Calendars:** open follow-ups as a calendar that **Google Calendar, Outlook and Apple Calendar** can subscribe to, per worker or for everyone. The due day is read from the note ("call her back Friday"). Sensitive cases show only a number. Each follow-up on the dashboard also has a 📅 button that adds it to Google, Outlook or Apple.
+- **Spreadsheets:** a live data link for **Google Sheets** (`=IMPORTDATA`), **Excel** (Data → From Web) and Numbers.
+- **Siri** ("Hey Siri, log impact") via the Shortcuts app, and **Android share**: share text from any app to ImpactText.
+- No developer accounts or OAuth: it all uses open formats (iCalendar, CSV, web app manifest).
+- Phones and Google/Microsoft must be able to reach the server: run with `--host 0.0.0.0` for phones on the same Wi-Fi, and use an https address (a tunnel or hosting, then set `PUBLIC_URL`) to install the app and use the calendar and spreadsheet links.
+- The calendar and spreadsheet links skip `APP_PASSWORD` (those apps can't log in) and are protected by a secret token instead. **Anyone with a link can read it**; "Make new links" on `/connect` revokes the old ones. Tests: `python -m eval.integrations_test`.
+
 ## How it works
 ```
 SMS (Twilio) ─┐

@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ImpactText · Text it</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ImpactText">
+  <script src="/static/pwa.js" defer></script>
   <style>
     main { max-width: 460px; }
     .phone { border: 1px solid var(--line); background: var(--card); border-radius: 28px; padding: 14px; display: flex; flex-direction: column; height: min(640px, 75vh); }
@@ -27,6 +35,7 @@
     <a class="tab" href="/report">Report</a>
     <a class="tab" href="/phone" aria-current="page">Text it</a>
     <a class="tab" href="/console">Console</a>
+    <a class="tab" href="/connect">Connect</a>
   </nav>
   <p class="small muted">Works on any phone, even a flip phone with no data plan. This simulator sends to the same code as the real ComForce number.</p>
   <div class="phone">

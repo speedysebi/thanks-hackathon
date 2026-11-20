@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ImpactText · Impact report</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ImpactText">
+  <script src="/static/pwa.js" defer></script>
   <style>
     main { max-width: 820px; }
     .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -33,6 +41,7 @@
     <a class="tab" href="/report" aria-current="page">Report</a>
     <a class="tab" href="/phone">Text it</a>
     <a class="tab" href="/console">Console</a>
+    <a class="tab" href="/connect">Connect</a>
   </nav>
   <div class="controls">
     <select id="days" style="width:auto" aria-label="Report period">

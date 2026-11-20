@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ImpactText · Dashboard</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ImpactText">
+  <script src="/static/pwa.js" defer></script>
   <style>
     .head { display: flex; gap: 12px; align-items: end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
     .tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
@@ -26,6 +34,14 @@
     .fu { display: flex; gap: 10px; justify-content: space-between; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
     .fu:first-child { border-top: 0; }
     .fu button { padding: 6px 12px; font-size: 14px; flex: none; }
+    .fu-actions { display: flex; gap: 6px; flex: none; align-items: start; }
+    .cal { position: relative; }
+    .cal summary { list-style: none; cursor: pointer; padding: 6px 12px; font-size: 14px; border: 1px solid var(--line); border-radius: 12px; }
+    .cal summary::-webkit-details-marker { display: none; }
+    .cal .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 3; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 6px; display: grid; min-width: 190px; box-shadow: 0 6px 20px rgb(0 0 0 / .15); }
+    .cal .menu a { padding: 8px 10px; border-radius: 8px; text-decoration: none; font-size: 14px; }
+    .cal .overdue { color: var(--accent); font-weight: 600; }
+    .cal .menu a:hover, .cal .menu a:focus { background: var(--track); }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
@@ -43,6 +59,7 @@
     <a class="tab" href="/report">Report</a>
     <a class="tab" href="/phone">Text it</a>
     <a class="tab" href="/console">Console</a>
+    <a class="tab" href="/connect">Connect</a>
   </nav>
 
   <div class="head">
@@ -117,6 +134,7 @@ async function load() {
     fetch('/api/summary?days=' + days).then((r) => r.json()),
     fetch('/api/entries?days=' + days + '&limit=300').then((r) => r.json()),
   ]);
+  const cal = Object.fromEntries((await fetch('/api/followups').then((r) => r.ok ? r.json() : []).catch(() => [])).map((f) => [f.id, f]));
   $('sub').textContent = `${fmt(s.entries)} activities logged by ${s.workers} people since ${new Date(s.since + 'T00:00').toLocaleDateString()}`;
   const tiles = [
     ['People served', s.people_served], ['Youth served', s.youth_served], ['Activities', s.entries],
@@ -134,9 +152,17 @@ async function load() {
   $('followups').innerHTML = fus.length ? fus.slice(0, 8).map((e) => `
     <div class="fu">
       <div><div>${esc(e.follow_up || e.summary)}</div><div class="small muted">${esc(e.activity_date)} · ${esc(e.worker)}${e.neighborhood ? ' · ' + esc(e.neighborhood) : ''}</div></div>
-      <button class="ghost" data-id="${e.id}">✓ Done</button>
+      <div class="fu-actions">${cal[e.id] ? `
+        <details class="cal"><summary title="Add to calendar">📅 <span class="small ${cal[e.id].due < new Date().toLocaleDateString('en-CA') ? 'overdue' : ''}">${esc(cal[e.id].due.slice(5))}</span></summary><div class="menu">
+          <a href="${esc(cal[e.id].links.google)}" target="_blank" rel="noopener">Google Calendar</a>
+          <a href="${esc(cal[e.id].links.outlook_work)}" target="_blank" rel="noopener">Outlook (work / school)</a>
+          <a href="${esc(cal[e.id].links.outlook_personal)}" target="_blank" rel="noopener">Outlook.com</a>
+          <a href="${esc(cal[e.id].links.ics)}">Apple Calendar / other (.ics)</a>
+          <a href="/connect#calendar" class="muted">Subscribe to all follow-ups…</a>
+        </div></details>` : ''}
+      <button class="ghost" data-id="${e.id}">✓ Done</button></div>
     </div>`).join('') : '<p class="muted small">Nobody is waiting on a follow-up. 🎉</p>';
-  $('followups').querySelectorAll('button').forEach((b) => b.onclick = async () => {
+  $('followups').querySelectorAll('button[data-id]').forEach((b) => b.onclick = async () => {
     b.disabled = true;
     await fetch('/api/entries/' + b.dataset.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome: 'resolved' }) });
     load();
@@ -151,6 +177,7 @@ async function load() {
 }
 $('days').onchange = load;
 load();
+document.addEventListener('click', (ev) => document.querySelectorAll('details.cal[open]').forEach((d) => { if (!d.contains(ev.target)) d.open = false; }));
 </script>
 </body>
 </html>

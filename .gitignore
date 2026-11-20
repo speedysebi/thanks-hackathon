@@ -7,3 +7,4 @@ data/events.jsonl
 eval/results.json
 eval/sweep_results.json
 data/*.log
+data/feed_token.txt

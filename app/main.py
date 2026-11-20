@@ -8,6 +8,7 @@ PAGES
   /report      printable impact report for funders (Print -> Save as PDF)
   /phone       SMS simulator for the demo (same code path as a real text)
   /console     testing console: try notes, run evals, review labels, next steps
+  /connect     phones (install, Siri, Android share) + Google/Microsoft/Apple calendars and spreadsheets
 API
   POST /api/log            {"text", "worker"} -> saved entry + confirmation
   POST /sms                Twilio webhook (form: From, Body) -> TwiML reply
@@ -17,10 +18,8 @@ API
   GET  /api/stats          latency + AI cost numbers for the pitch
 """
 import base64
-import csv
 import hashlib
 import hmac
-import io
 import os
 import re
 import time
@@ -35,11 +34,16 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app import console, db, extract, impact, llm, metrics, privacy
+from app import console, db, extract, impact, integrations, llm, metrics, privacy
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = FastAPI(title="ImpactText")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+
+# No login on these: Twilio is checked by signature; calendar apps and Google Sheets can't log in, so
+# /calendar and /feeds are checked by their secret token; the app manifest, service worker and icons hold no data.
+OPEN_PATHS = ("/sms", "/calendar/", "/feeds/", "/manifest.webmanifest", "/sw.js", "/static/icons/")
 
 
 @app.middleware("http")
@@ -47,7 +51,7 @@ async def require_password(request: Request, call_next):
     """Set APP_PASSWORD in .env before real data goes in: then the dashboard, API and export need it
     (browser login box: any username + that password). /sms stays open for Twilio, which is checked by signature."""
     password = os.getenv("APP_PASSWORD")
-    if password and request.url.path != "/sms":
+    if password and not request.url.path.startswith(OPEN_PATHS):
         given = ""
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Basic "):
@@ -64,10 +68,21 @@ def page(name: str):
     return lambda: FileResponse(STATIC / name)
 
 
-for route, file in {"/": "index.html", "/dashboard": "dashboard.html", "/report": "report.html", "/phone": "phone.html", "/console": "console.html"}.items():
+for route, file in {"/": "index.html", "/dashboard": "dashboard.html", "/report": "report.html", "/phone": "phone.html", "/console": "console.html", "/connect": "connect.html"}.items():
     app.add_api_route(route, page(file), methods=["GET"], include_in_schema=False)
 
 app.include_router(console.router)
+app.include_router(integrations.router)
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def manifest():
+    return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js", include_in_schema=False)
+def service_worker():  # served from / so it can make the whole app work offline
+    return FileResponse(STATIC / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"})
 
 
 # ---------- logging ----------
@@ -75,6 +90,8 @@ class LogIn(BaseModel):
     text: str = Field(min_length=3, max_length=2000)
     worker: str = Field(default="Volunteer", max_length=60)
     channel: str = "web"
+    # set by the phone when a note typed offline is sent later, so the activity keeps the day it happened
+    logged_on: date | None = None
 
     @field_validator("text")
     @classmethod
@@ -84,7 +101,7 @@ class LogIn(BaseModel):
         return v
 
 
-def log_note(text: str, worker: str, channel: str, phone: str = "") -> dict:
+def log_note(text: str, worker: str, channel: str, phone: str = "", logged_on: date | None = None) -> dict:
     start = time.perf_counter()
     text = privacy.scrub(text.strip()[:2000])  # phone numbers, addresses, "Ms. Johnson" never get stored or sent out
     worker = worker.strip() or "Volunteer"
@@ -92,6 +109,9 @@ def log_note(text: str, worker: str, channel: str, phone: str = "") -> dict:
     if dup:
         return {**dup, "duplicate": True}
     fields = extract.extract(text)
+    late = (date.today() - logged_on).days if logged_on else 0
+    if 0 < late <= 14:  # "yesterday" in a note typed 3 days ago, sent today = 4 days ago
+        fields["activity_date"] = (date.fromisoformat(fields["activity_date"]) - timedelta(days=late)).isoformat()
     entry = db.insert({**fields, "raw_text": text, "worker": worker, "channel": channel, "phone": phone})
     metrics.record("log", (time.perf_counter() - start) * 1000, ok=True, channel=channel, extractor=fields["extractor"])
     return entry
@@ -99,7 +119,8 @@ def log_note(text: str, worker: str, channel: str, phone: str = "") -> dict:
 
 @app.post("/api/log")
 def api_log(body: LogIn):
-    entry = log_note(body.text, body.worker, body.channel if body.channel in ("web", "voice") else "web")
+    entry = log_note(body.text, body.worker, body.channel if body.channel in ("web", "voice") else "web",
+                     logged_on=body.logged_on)
     return {"entry": entry, "confirmation": extract.confirmation(entry)}
 
 
@@ -221,16 +242,8 @@ def api_report(days: int = 30):
 
 @app.get("/api/export.csv")
 def export_csv():
-    rows = db.list_entries(limit=100000)
-    buf = io.StringIO()
-    if rows:
-        w = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
-        w.writeheader()
-        for r in rows:
-            w.writerow({**r, "referred_to": "; ".join(r["referred_to"]), "partners": "; ".join(r["partners"])})
-    buf.seek(0)
     name = f"comforce-impact-{date.today().isoformat()}.csv"
-    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+    return StreamingResponse(iter([integrations.csv_text()]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 

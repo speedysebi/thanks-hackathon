@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImpactText · Connect</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ImpactText">
+  <script src="/static/pwa.js" defer></script>
+  <style>
+    main { max-width: 820px; }
+    .stack { display: grid; gap: 14px; }
+    h2 { display: flex; gap: 10px; align-items: center; }
+    h2 .logos { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: auto; }
+    h3 { font-size: 16px; margin: 0 0 6px; }
+    p { margin: 0; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .btn.small, button.small { padding: 9px 14px; font-size: 15px; }
+    .copy { display: flex; gap: 8px; align-items: stretch; }
+    .copy input { font-family: ui-monospace, Consolas, monospace; font-size: 13px; padding: 10px; min-width: 0; }
+    .copy button { flex: none; padding: 8px 14px; font-size: 14px; }
+    .phone { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: start; }
+    #qr { background: #fff; padding: 10px; border-radius: 12px; width: 200px; height: 200px; display: grid; place-items: center; }
+    #qr img, #qr canvas { display: block; }
+    @media (max-width: 560px) { .phone { grid-template-columns: 1fr; } #qr { margin: 0 auto; } }
+    ol { margin: 6px 0 0; padding-left: 22px; } ol li { margin: 3px 0; }
+    .two { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); }
+    .sub { padding: 14px; border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 8px; align-content: start; }
+    .note { padding: 10px 12px; border-radius: 10px; font-size: 14px; background: var(--track); }
+    .note.warn { background: var(--warn-bg); color: var(--warn); }
+    code.block { display: block; padding: 10px 12px; border-radius: 10px; background: var(--track); font-size: 13px; white-space: pre-wrap; }
+    details summary { cursor: pointer; font-size: 15px; }
+    .muted a { color: inherit; }
+  </style>
+</head>
+<body>
+<main class="stack">
+  <nav style="margin-bottom:4px">
+    <a class="brand" href="/">ImpactText</a>
+    <a class="tab" href="/">Log</a>
+    <a class="tab" href="/dashboard">Dashboard</a>
+    <a class="tab" href="/report">Report</a>
+    <a class="tab" href="/phone">Text it</a>
+    <a class="tab" href="/console">Console</a>
+    <a class="tab" href="/connect" aria-current="page">Connect</a>
+  </nav>
+  <div>
+    <h1>Connect</h1>
+    <p class="muted small" style="margin-top:4px">Put ImpactText on your phone, and send follow-ups and numbers to the calendar and spreadsheet apps you already use. No extra accounts needed.</p>
+  </div>
+
+  <div id="reach" class="note warn hidden"></div>
+
+  <!-- PHONE -->
+  <section class="card stack" id="phone">
+    <h2>📱 On your phone <span class="logos">iPhone · Android</span></h2>
+    <div class="phone">
+      <div id="qr" aria-label="QR code with the app's address"><span class="small muted">QR code</span></div>
+      <div class="stack" style="gap:10px">
+        <p>Scan this with the phone's camera to open ImpactText. Then add it to the home screen so it opens like an app:</p>
+        <div class="two">
+          <div class="sub"><h3>iPhone (Safari)</h3><ol class="small"><li>Tap the <b>Share</b> button</li><li><b>Add to Home Screen</b></li><li>Tap <b>Add</b></li></ol></div>
+          <div class="sub"><h3>Android (Chrome)</h3><ol class="small"><li>Tap <b>⋮</b> (top right)</li><li><b>Install app</b> or <b>Add to Home screen</b></li></ol></div>
+        </div>
+        <div class="copy"><input id="app-url" readonly aria-label="App address"><button class="ghost" data-copy="app-url">Copy</button></div>
+        <p class="small muted">Works with no signal: notes saved offline stay on the phone and send themselves later.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section class="card stack" id="calendar">
+    <h2>📅 Follow-ups in your calendar <span class="logos">Google · Outlook · Apple</span></h2>
+    <p>Every open follow-up shows up as an all-day event on the day it's due (read from the note: "call her back Friday" → Friday). Done ones disappear. Sensitive cases show only a number, never details.</p>
+    <div class="row">
+      <label for="cal-worker" class="small muted">Whose follow-ups?</label>
+      <select id="cal-worker" style="width:auto"><option value="">Everyone's</option></select>
+    </div>
+    <div class="two">
+      <div class="sub">
+        <h3>Google Calendar</h3>
+        <a class="btn small" id="cal-google" target="_blank" rel="noopener">Add to Google Calendar</a>
+        <details class="small"><summary>Or by hand</summary><ol><li>calendar.google.com → <b>Other calendars +</b> → <b>From URL</b></li><li>Paste the link below → <b>Add calendar</b></li></ol></details>
+      </div>
+      <div class="sub">
+        <h3>Outlook <span class="muted small">(Microsoft 365, Outlook.com)</span></h3>
+        <a class="btn small" id="cal-outlook" target="_blank" rel="noopener">Add to Outlook</a>
+        <details class="small"><summary>Or by hand</summary><ol><li>Outlook on the web → Calendar → <b>Add calendar</b> → <b>Subscribe from web</b></li><li>Paste the link below → <b>Import</b></li></ol>
+          <p class="muted" style="margin-top:4px">Outlook for Windows: <b>Add calendar → From internet</b>.</p></details>
+      </div>
+      <div class="sub">
+        <h3>Apple Calendar <span class="muted small">(iPhone, Mac)</span></h3>
+        <a class="btn small" id="cal-apple">Subscribe on this device</a>
+        <details class="small"><summary>Or by hand</summary><ol><li>iPhone: Settings → Calendar → Accounts → Add Account → Other → <b>Add Subscribed Calendar</b></li><li>Mac: Calendar → File → <b>New Calendar Subscription</b></li><li>Paste the link below</li></ol></details>
+      </div>
+    </div>
+    <div class="copy"><input id="cal-url" readonly aria-label="Calendar link"><button class="ghost" data-copy="cal-url">Copy</button></div>
+    <p class="small muted">Calendar apps check for changes on their own schedule: Apple and Outlook every hour or so, Google can take up to a day. For one follow-up right now, use the 📅 button next to it on the <a href="/dashboard">dashboard</a>.</p>
+  </section>
+
+  <!-- SHEETS -->
+  <section class="card stack" id="sheets">
+    <h2>📊 Spreadsheets <span class="logos">Google Sheets · Excel · Numbers</span></h2>
+    <p>A live link to every record. The spreadsheet pulls fresh numbers whenever it refreshes, so funder or city reports can be built in the tools staff already know.</p>
+    <div class="copy"><input id="csv-url" readonly aria-label="Data link"><button class="ghost" data-copy="csv-url">Copy</button></div>
+    <div class="two">
+      <div class="sub"><h3>Google Sheets</h3><p class="small">Paste this into cell A1. It refreshes about every hour.</p>
+        <div class="copy"><input id="sheets-formula" readonly aria-label="Google Sheets formula"><button class="ghost" data-copy="sheets-formula">Copy</button></div></div>
+      <div class="sub"><h3>Excel</h3><ol class="small"><li><b>Data → From Web</b></li><li>Paste the link above → <b>OK</b> → <b>Load</b></li><li><b>Refresh All</b> pulls new entries</li></ol></div>
+      <div class="sub"><h3>Numbers / anything else</h3><p class="small">Download a copy and open it.</p><a class="btn ghost small" href="/api/export.csv">Download CSV</a></div>
+    </div>
+  </section>
+
+  <!-- SIRI / SHARE -->
+  <section class="card stack" id="voice">
+    <h2>🗣️ Log without opening the app <span class="logos">Siri · Android share</span></h2>
+    <div class="two">
+      <div class="sub">
+        <h3>"Hey Siri, log impact" (iPhone)</h3>
+        <p class="small">Build it once in the <b>Shortcuts</b> app, about 2 minutes:</p>
+        <ol class="small">
+          <li>New shortcut. Name it <b>Log impact</b></li>
+          <li>Add <b>Dictate Text</b></li>
+          <li>Add <b>Get Contents of URL</b>, with the address below. Tap ▸: Method <b>POST</b>, Request Body <b>JSON</b>, add fields <code>text</code> = <i>Dictated Text</i>, <code>worker</code> = your name, <code>channel</code> = <code>voice</code></li>
+          <li id="siri-auth-step" class="hidden">Under Headers add <code>Authorization</code> = the value below</li>
+          <li>Add <b>Get Dictionary Value</b>: key <code>confirmation</code>, then <b>Speak Text</b></li>
+        </ol>
+        <div class="copy"><input id="log-url" readonly aria-label="Log address"><button class="ghost" data-copy="log-url">Copy</button></div>
+        <div id="siri-auth" class="stack hidden" style="gap:6px">
+          <label class="small" for="siri-pw">The app password, to make the Authorization value. It stays in this browser.</label>
+          <input id="siri-pw" type="password" autocomplete="off">
+          <div class="copy"><input id="siri-header" readonly aria-label="Authorization value"><button class="ghost" data-copy="siri-header">Copy</button></div>
+        </div>
+      </div>
+      <div class="sub">
+        <h3>Share to ImpactText (Android)</h3>
+        <p class="small">Once the app is on the home screen, text from any app (Messages, Gmail, Google Keep, WhatsApp) can be sent to it: select the text → <b>Share</b> → <b>ImpactText</b>. It opens with the note filled in; check it and tap Save.</p>
+        <p class="small muted">Long-press the ImpactText icon for a <b>Log something</b> shortcut.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECURITY -->
+  <section class="card stack">
+    <h2>🔒 About these links</h2>
+    <p class="small">The calendar and spreadsheet links work without the app password, because calendar apps and Google Sheets can't log in. <b>Anyone with a link can read what it shows</b>, so share them like a password. If one leaks, make new links: the old ones stop working at once (update them where you added them).</p>
+    <div class="row"><button class="ghost small" id="new-link">Make new links</button><span class="small muted" id="new-link-msg"></span></div>
+  </section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let info = null;
+
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-copy]'); if (!b) return;
+  const input = $(b.dataset.copy);
+  try { await navigator.clipboard.writeText(input.value); } catch { input.select(); document.execCommand('copy'); }
+  const old = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => (b.textContent = old), 1500);
+});
+
+function calendarLinks() {
+  const w = $('cal-worker').value, q = w ? '?worker=' + encodeURIComponent(w) : '';
+  const https = info.calendar_url + q, webcal = info.webcal_url + q;
+  $('cal-url').value = https;
+  $('cal-google').href = 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(webcal);
+  $('cal-outlook').href = 'https://outlook.office.com/calendar/0/addfromweb?url=' + encodeURIComponent(https) + '&name=' + encodeURIComponent('ImpactText follow-ups' + (w ? ` (${w})` : ''));
+  $('cal-apple').href = webcal;
+}
+
+function drawQR(url) {
+  const el = $('qr');
+  if (!window.QRCode) { el.innerHTML = '<span class="small" style="color:#555;text-align:center">QR code needs internet.<br>Type the address below.</span>'; return; }
+  el.innerHTML = '';
+  new QRCode(el, { text: url, width: 180, height: 180, colorDark: '#161616', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
+}
+
+async function load() {
+  const r = await fetch('/api/integrations');
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  info = await r.json();
+  const phoneUrl = info.local_only && info.lan_url ? info.lan_url : info.base;
+  $('app-url').value = phoneUrl;
+  if (info.local_only) {
+    $('reach').classList.remove('hidden');
+    $('reach').innerHTML = `<b>This server only runs on this computer right now.</b> Phones, Google and Microsoft can't reach <code>127.0.0.1</code>.<br>
+      <b>To try it on a phone on the same Wi-Fi:</b> restart with <code>uvicorn app.main:app --host 0.0.0.0</code> and open <b>${phoneUrl.replace(/[<>&"]/g, '')}</b>. (Windows may ask to allow Python through the firewall.)<br>
+      <b>To install it as an app, work offline, and use the calendar and spreadsheet links:</b> it needs an <b>https</b> address, from a tunnel (<code>cloudflared tunnel --url http://localhost:8000</code>) or hosting. Then set <code>PUBLIC_URL</code> in .env to that address.`;
+  } else if (!info.https) {
+    $('reach').classList.remove('hidden');
+    $('reach').innerHTML = '<b>This address is not https.</b> Phones open it fine, but installing as an app and offline use need https.';
+  }
+  if (window.QRCode) drawQR(phoneUrl); else window.addEventListener('load', () => drawQR(phoneUrl));
+
+  const sel = $('cal-worker'), keep = sel.value;
+  sel.innerHTML = '<option value="">Everyone\'s</option>' + info.workers.map((w) => `<option>${w.replace(/[<>&"]/g, '')}</option>`).join('');
+  sel.value = keep;
+  calendarLinks();
+  $('csv-url').value = info.csv_url;
+  $('sheets-formula').value = `=IMPORTDATA("${info.csv_url}")`;
+  $('log-url').value = info.log_url;
+  $('siri-auth').classList.toggle('hidden', !info.password);
+  $('siri-auth-step').classList.toggle('hidden', !info.password);
+  $('new-link').disabled = info.token_from_env;
+  if (info.token_from_env) $('new-link-msg').textContent = 'The links come from FEED_TOKEN in .env; change it there.';
+}
+$('cal-worker').addEventListener('change', calendarLinks);
+$('siri-pw').addEventListener('input', () => {
+  const pw = $('siri-pw').value;
+  $('siri-header').value = pw ? 'Basic ' + btoa(unescape(encodeURIComponent('impacttext:' + pw))) : '';
+});
+$('new-link').addEventListener('click', async () => {
+  if (!confirm('Make new links? The current calendar and spreadsheet links stop working right away.')) return;
+  $('new-link').disabled = true;
+  try {
+    const r = await fetch('/api/integrations/new-link', { method: 'POST', headers: { 'X-ImpactText': '1' } });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'HTTP ' + r.status);
+    await load();
+    $('new-link-msg').textContent = 'New links made. Update them where you added them.';
+  } catch (e) { $('new-link-msg').textContent = 'Could not: ' + e.message; }
+  finally { $('new-link').disabled = !!info?.token_from_env; }
+});
+load().catch((e) => { $('reach').classList.remove('hidden'); $('reach').textContent = "Couldn't load settings: " + e.message; });
+</script>
+</body>
+</html>

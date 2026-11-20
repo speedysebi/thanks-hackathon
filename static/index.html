@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ImpactText · Log</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ImpactText">
+  <script src="/static/pwa.js" defer></script>
   <style>
     main { max-width: 560px; }
     .mic { width: 100%; padding: 26px 18px; font-size: 22px; border-radius: 18px; display: flex; gap: 12px; align-items: center; justify-content: center; }
@@ -31,6 +39,7 @@
     <a class="tab" href="/report">Report</a>
     <a class="tab" href="/phone">Text it</a>
     <a class="tab" href="/console">Console</a>
+    <a class="tab" href="/connect">Connect</a>
   </nav>
 
   <section id="nameStep" class="card hidden">
@@ -74,7 +83,9 @@
       </div>
     </section>
 
-    <p class="small muted" style="margin-top:24px">No internet data? You can also <a href="/phone">text it</a> to the ComForce number. Names of people you helped are never stored.</p>
+    <section id="queued" class="card hidden" aria-live="polite" style="margin-top:16px"></section>
+
+    <p class="small muted" style="margin-top:24px">No signal? Save anyway: the note stays on this phone and is sent when you're back online. No internet data? You can also <a href="/phone">text it</a> to the ComForce number. Names of people you helped are never stored.</p>
   </section>
 </main>
 <script>
@@ -118,6 +129,7 @@ $('logForm').onsubmit = async (e) => {
   e.preventDefault();
   if (rec) rec.stop();
   const text = $('text').value.trim(); if (text.length < 3) return;
+  if (navigator.onLine === false) { enqueue(text); return; }
   $('save').disabled = true; $('save').textContent = 'Saving…';
   try {
     const r = await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, worker, channel }) });
@@ -138,7 +150,11 @@ $('logForm').onsubmit = async (e) => {
     $('done').classList.remove('hidden');
     $('text').value = ''; channel = 'web';
   } catch (err) {
-    alert('Could not save. Check your connection and try again. Your note is still in the box.');
+    if (err instanceof TypeError) {  // no connection: keep it on the phone instead of losing it
+      enqueue(text);
+    } else {
+      alert('Could not save (' + err.message + '). Your note is still in the box.');
+    }
   } finally {
     $('save').disabled = false; $('save').textContent = 'Save';
   }
@@ -149,7 +165,58 @@ $('undo').onclick = async () => {
   $('done').classList.add('hidden'); lastId = null;
   $('text').value = lastText; $('text').focus();
 };
+// --- offline: notes saved with no signal wait on this phone and go out when it's back online
+const QKEY = 'impacttext-queue';
+const queue = {
+  all() { try { return JSON.parse(localStorage.getItem(QKEY)) || []; } catch { return []; } },
+  save(q) { try { localStorage.setItem(QKEY, JSON.stringify(q)); return true; } catch { return false; } },
+};
+const today = () => new Date().toLocaleDateString('en-CA');  // YYYY-MM-DD on the phone's own calendar
+function enqueue(text) {
+  const q = queue.all();
+  q.push({ qid: Date.now() + '-' + Math.random().toString(36).slice(2, 7), text, worker, channel, logged_on: today() });
+  if (!queue.save(q)) { alert("No signal, and this browser won't let us keep the note. Copy it somewhere and try later."); return; }
+  $('text').value = ''; channel = 'web';
+  $('done').classList.add('hidden');
+  renderQueue();
+}
+function renderQueue(sent = 0) {
+  const n = queue.all().length, el = $('queued');
+  if (!n && !sent) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.innerHTML = n
+    ? `<b>📶 ${n} note${n === 1 ? '' : 's'} waiting for signal.</b> <span class="small muted">Saved on this phone. They send by themselves when you're back online.</span> <button class="ghost" type="button" id="retry" style="margin-top:8px;padding:6px 12px;font-size:14px">Try now</button>`
+    : `<b style="color:var(--ok)">✓ Sent ${sent} saved note${sent === 1 ? '' : 's'}.</b> <span class="small muted">Check them on the dashboard.</span>`;
+  const b = document.getElementById('retry'); if (b) b.onclick = flush;
+}
+let flushing = false;
+async function flush() {
+  if (flushing || !queue.all().length) return;
+  flushing = true;
+  let sent = 0;
+  try {
+    for (const item of queue.all()) {
+      const { qid, ...body } = item;
+      const r = await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok && r.status !== 422) break;  // server trouble: keep it and try later. 422 = the note itself is invalid: drop it
+      queue.save(queue.all().filter((x) => x.qid !== qid));
+      sent += r.ok;
+    }
+  } catch { /* still offline */ }
+  flushing = false;
+  renderQueue(sent);
+}
+window.addEventListener('online', flush);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) flush(); });
+
+// --- Android "Share" to ImpactText (manifest share_target) and links like /?text=...
+const params = new URLSearchParams(location.search);
+const shared = [params.get('title'), params.get('text'), params.get('url')].filter(Boolean).join(' ').trim();
+if (shared) { $('text').value = shared.slice(0, 2000); history.replaceState(null, '', '/'); }
+
 show();
+renderQueue();
+flush();
 </script>
 </body>
 </html>

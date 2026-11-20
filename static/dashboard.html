@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImpactText · Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .head { display: flex; gap: 12px; align-items: end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
+    .tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    .tile b { display: block; font-size: 32px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .two { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); margin-top: 14px; align-items: start; }
+    .bars { display: grid; gap: 8px; }
+    .bar { display: grid; grid-template-columns: minmax(90px, 38%) 1fr auto; gap: 10px; align-items: center; font-size: 14px; }
+    .bar .track { height: 14px; }
+    .bar .fill { height: 100%; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+    .bar .v { font-variant-numeric: tabular-nums; color: var(--muted); }
+    .bar .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cols { display: flex; align-items: flex-end; gap: 3px; height: 160px; border-bottom: 1px solid var(--line); position: relative; }
+    .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; position: relative; }
+    .col .fill { background: var(--series-1); border-radius: 4px 4px 0 0; min-height: 2px; }
+    .col:hover .fill, .col:focus .fill { filter: brightness(1.15); }
+    .tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); font-size: 12px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; pointer-events: none; display: none; z-index: 2; }
+    .col:hover .tip, .col:focus .tip { display: block; }
+    .axis { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .fu { display: flex; gap: 10px; justify-content: space-between; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+    .fu:first-child { border-top: 0; }
+    .fu button { padding: 6px 12px; font-size: 14px; flex: none; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; border-top: 0; }
+    td.num { font-variant-numeric: tabular-nums; text-align: right; }
+    .empty { padding: 30px; text-align: center; }
+  </style>
+</head>
+<body>
+<main>
+  <nav>
+    <a class="brand" href="/">ImpactText</a>
+    <a class="tab" href="/">Log</a>
+    <a class="tab" href="/dashboard" aria-current="page">Dashboard</a>
+    <a class="tab" href="/report">Report</a>
+    <a class="tab" href="/phone">Text it</a>
+  </nav>
+
+  <div class="head">
+    <div>
+      <h1>ComForce MKE impact</h1>
+      <span class="muted small" id="sub">Loading…</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select id="days" style="width:auto" aria-label="Time period">
+        <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option>
+        <option value="90">Last 90 days</option><option value="365">Last 12 months</option>
+      </select>
+      <a class="btn ghost" href="/api/export.csv">⬇ Export CSV</a>
+      <a class="btn" id="reportLink" href="/report">Make grant report</a>
+    </div>
+  </div>
+
+  <section class="grid tiles" id="tiles"></section>
+
+  <section class="grid two">
+    <div class="card"><h2>People served per week</h2><div id="weekly"></div></div>
+    <div class="card"><h2>Follow-ups waiting <span class="pill warn" id="fuCount">0</span></h2><div id="followups"></div></div>
+  </section>
+
+  <section class="grid two">
+    <div class="card"><h2>People served by activity</h2><div class="bars" id="byType"></div></div>
+    <div class="card"><h2>People served by neighborhood</h2><div class="bars" id="byHood"></div></div>
+    <div class="card"><h2>Referred to</h2><div class="bars" id="refs"></div></div>
+    <div class="card"><h2>Activities logged by worker</h2><div class="bars" id="workers"></div></div>
+  </section>
+
+  <section class="card" style="margin-top:14px">
+    <h2>Recent entries</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Who</th><th>What happened</th><th>Activity</th><th class="num">People</th><th>Status</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nice = (s) => esc(String(s).replaceAll('_', ' '));
+const fmt = (n) => (n ?? 0).toLocaleString();
+
+function bars(el, items, key, unit) {
+  if (!items.length) { el.innerHTML = '<p class="muted small">Nothing logged yet.</p>'; return; }
+  const max = Math.max(...items.map((i) => i[key]), 1);
+  el.innerHTML = items.map((i) => `
+    <div class="bar" title="${esc(i.label)}: ${fmt(i[key])} ${unit}">
+      <span class="name">${esc(i.label)}</span>
+      <span class="track"><span class="fill" style="display:block;width:${(i[key] / max) * 100}%"></span></span>
+      <span class="v">${fmt(i[key])}</span>
+    </div>`).join('');
+}
+
+function weekly(el, weeks) {
+  const max = Math.max(...weeks.map((w) => w.people), 1);
+  const d = (iso) => new Date(iso + 'T00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  el.innerHTML = `<div class="cols">${weeks.map((w) => `
+      <div class="col" tabindex="0" aria-label="Week of ${d(w.week)}: ${w.people} people, ${w.entries} activities">
+        <span class="tip">Week of ${d(w.week)} · ${fmt(w.people)} people · ${w.entries} activities</span>
+        <div class="fill" style="height:${(w.people / max) * 100}%"></div>
+      </div>`).join('')}</div>
+    <div class="axis"><span>${weeks.length ? d(weeks[0].week) : ''}</span><span>peak ${fmt(max)} / week</span><span>This week</span></div>`;
+}
+
+async function load() {
+  const days = $('days').value;
+  $('reportLink').href = '/report?days=' + days;
+  const [s, entries] = await Promise.all([
+    fetch('/api/summary?days=' + days).then((r) => r.json()),
+    fetch('/api/entries?days=' + days + '&limit=300').then((r) => r.json()),
+  ]);
+  $('sub').textContent = `${fmt(s.entries)} activities logged by ${s.workers} people since ${new Date(s.since + 'T00:00').toLocaleDateString()}`;
+  const tiles = [
+    ['People served', s.people_served], ['Youth served', s.youth_served], ['Activities', s.entries],
+    ['Referrals made', s.referrals], ['Hours recorded', s.hours], ['Resolved (where known)', s.resolved_rate == null ? '–' : s.resolved_rate + '%'],
+  ];
+  $('tiles').innerHTML = tiles.map(([l, v]) => `<div class="card tile"><b>${typeof v === 'number' ? fmt(v) : v}</b><span class="muted small">${l}</span></div>`).join('');
+  weekly($('weekly'), s.weekly);
+  bars($('byType'), [...s.by_type].sort((a, b) => b.people - a.people), 'people', 'people');
+  bars($('byHood'), s.by_neighborhood, 'people', 'people');
+  bars($('refs'), s.referral_orgs, 'count', 'referrals');
+  bars($('workers'), s.by_worker, 'entries', 'activities');
+
+  const fus = entries.filter((e) => e.outcome === 'needs_follow_up');
+  $('fuCount').textContent = fus.length;
+  $('followups').innerHTML = fus.length ? fus.slice(0, 8).map((e) => `
+    <div class="fu">
+      <div><div>${esc(e.follow_up || e.summary)}</div><div class="small muted">${esc(e.activity_date)} · ${esc(e.worker)}${e.neighborhood ? ' · ' + esc(e.neighborhood) : ''}</div></div>
+      <button class="ghost" data-id="${e.id}">✓ Done</button>
+    </div>`).join('') : '<p class="muted small">Nobody is waiting on a follow-up. 🎉</p>';
+  $('followups').querySelectorAll('button').forEach((b) => b.onclick = async () => {
+    b.disabled = true;
+    await fetch('/api/entries/' + b.dataset.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome: 'resolved' }) });
+    load();
+  });
+
+  const statusPill = (o) => o === 'needs_follow_up' ? '<span class="pill warn">follow up</span>' : o === 'resolved' ? '<span class="pill ok">resolved</span>' : `<span class="pill">${nice(o)}</span>`;
+  $('rows').innerHTML = entries.length ? entries.slice(0, 40).map((e) => `
+    <tr><td>${esc(e.activity_date)}</td><td>${esc(e.worker)}<div class="small muted">${esc(e.channel)}</div></td>
+      <td>${esc(e.summary)}${e.referred_to.length ? `<div class="small muted">→ ${esc(e.referred_to.join(', '))}</div>` : ''}</td>
+      <td>${nice(e.activity_type)}</td><td class="num">${fmt(e.people_served)}</td><td>${statusPill(e.outcome)}</td></tr>`).join('')
+    : '<tr><td colspan="6" class="empty muted">No entries yet. <a href="/">Log the first one</a>.</td></tr>';
+}
+$('days').onchange = load;
+load();
+</script>
+</body>
+</html>

@@ -43,20 +43,31 @@ Typed note ───┘         Claude + JSON schema (strict)
 - `app/db.py`: SQLite. `app/seed.py`: synthetic demo data. `eval/`: accuracy test
 
 ## Trust and privacy
-- **No names of people helped are stored.** The prompt rewrites "Ms. Johnson" as "a mother". Entries about violence or injury are flagged `sensitive` and kept out of report stories.
+- **Personal details are scrubbed before anything is stored or sent to the AI:** phone numbers, emails, street addresses and titled names ("Ms. Johnson"). The AI summary also rewrites any other names ("a mother"). Limit: a bare first name in the raw note isn't caught offline. Entries about violence or injury are flagged `sensitive` and kept out of report stories, and the report only quotes AI-written summaries.
+- A text sent twice (bad signal, double tap) is only counted once.
 - The AI only fills in fields. Every number in the report comes from the database, and the report prompt forbids inventing figures.
 - **Never fails in the field.** If the AI is down, the note is still saved by the keyword extractor.
-- `UNDO` only removes your own text from the last 24 hours.
+- `UNDO` only removes your own text from the last 24 hours. Texts are tied to the sender's phone, so two workers who pick the same `NAME` can't undo or merge each other's entries. Phone numbers only ever leave the server as the last 4 digits.
+- **Set `APP_PASSWORD` in `.env` before real data goes in.** Without it, anyone with the URL can see, edit, delete and export entries. With it, every page and API asks for the password (any username); `/sms` stays open because Twilio is verified by signature.
 
-## Measured
-`python -m eval.run_eval` (free) or `python -m eval.run_eval --ai` scores 30 hand-labelled notes on 6 fields.
-
-| Extractor | Field accuracy | Notes |
+## Measured (details in docs/EXPERIMENTS.md)
+| Extractor | Held-out test notes | Dictation-style notes |
 |---|---|---|
-| Keyword baseline | **60.0%** | free, offline |
-| Claude (`MODEL` in .env) | run `--ai` and fill in | |
+| Keywords v1 | 65.0% | – |
+| Keywords v2 (current free fallback) | **90.6–91.1%** | **91.1%** |
+| Claude | run `python -m eval.run_eval --ai` | |
 
+Also: 56/56 robustness checks, 14/14 browser click-through checks, 200 texts/sec with zero errors, every SMS reply fits one segment.
 `/api/stats` shows real latency, token use and cost per note while you demo.
+
+| Command | What it does |
+|---|---|
+| `python -m eval.run_eval [--ai] [-v]` | accuracy on dev / test / voice sets |
+| `python -m eval.ai_sweep [--quick]` | Opus vs Sonnet vs Haiku, effort, prompt variants: accuracy and $/month |
+| `python -m eval.robustness` | hostile and odd inputs, privacy check |
+| `python -m eval.sms_cost` | SMS segments per reply |
+| `python -m eval.load_test URL N C` | N texts, C at once, against a running server |
+| `python -m eval.browser_test URL` | headless Edge/Chrome click-through |
 
 ## Cost to run (estimates; check current prices)
 | Item | Monthly |

@@ -2,7 +2,10 @@
 import json
 import os
 import sqlite3
+import threading
 from pathlib import Path
+
+from app import privacy
 
 DB_PATH = Path(os.getenv("IMPACT_DB") or Path(__file__).resolve().parent.parent / "data" / "impact.db")
 
@@ -64,22 +67,39 @@ _MIGRATIONS = {
     "client_id": "ALTER TABLE entries ADD COLUMN client_id TEXT",  # set by the phone so a resent offline note counts once
 }
 _ready: set[str] = set()
+_schema_lock = threading.Lock()
 
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    if str(DB_PATH) not in _ready:
-        conn.executescript(SCHEMA)
-        have = {r["name"] for r in conn.execute("PRAGMA table_info(entries)")}
-        for col, sql in _MIGRATIONS.items():
-            if col not in have:
-                conn.execute(sql)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(user_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_client ON entries(client_id)")
-        conn.commit()
-        _ready.add(str(DB_PATH))
+    try:
+        if str(DB_PATH) not in _ready:
+            with _schema_lock:
+                if str(DB_PATH) not in _ready:
+                    conn.executescript(SCHEMA)
+                    # Serialize migrations across connections/processes as well as threads.
+                    with conn:
+                        conn.execute("BEGIN IMMEDIATE")
+                        have = {r["name"] for r in conn.execute("PRAGMA table_info(entries)")}
+                        for col, sql in _MIGRATIONS.items():
+                            if col not in have:
+                                conn.execute(sql)
+                        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(user_id)")
+                        try:
+                            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_entries_client "
+                                         "ON entries(client_id) WHERE client_id IS NOT NULL")
+                        except sqlite3.IntegrityError as exc:
+                            raise RuntimeError(
+                                "Duplicate client IDs exist in entries. Reconcile them before retrying; "
+                                "see docs/DATA_CORRECTNESS.md. No entries were removed."
+                            ) from exc
+                        conn.execute("DROP INDEX IF EXISTS idx_entries_client")
+                    _ready.add(str(DB_PATH))
+    except Exception:
+        conn.close()
+        raise
     return conn
 
 
@@ -103,8 +123,14 @@ def insert(entry: dict) -> dict:
     vals = [json.dumps(entry[c]) if c in LIST_FIELDS else entry[c] for c in cols]
     with connect() as conn:
         cur = conn.execute(
-            f"INSERT INTO entries ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})", vals
+            f"INSERT INTO entries ({','.join(cols)}) VALUES ({','.join('?' * len(cols))}) "
+            "ON CONFLICT(client_id) WHERE client_id IS NOT NULL DO NOTHING", vals
         )
+        if cur.rowcount == 0:
+            # Another request saved this ID after our initial lookup. Return its entry;
+            # the API still checks ownership before exposing contents or an undo token.
+            row = conn.execute("SELECT * FROM entries WHERE client_id = ?", (entry["client_id"],)).fetchone()
+            return {**_row(row), "duplicate": True}
         return get(cur.lastrowid, conn)
 
 
@@ -123,6 +149,23 @@ def list_entries(since: str | None = None, limit: int = 500) -> list[dict]:
         return [_row(r) for r in conn.execute(q, [*args, limit])]
 
 
+def list_followups(since: str | None = None, worker: str | None = None) -> list[dict]:
+    """All unresolved follow-ups, independent of the recent-entry limit."""
+    q, args = "SELECT * FROM entries WHERE outcome = 'needs_follow_up'", []
+    if since:
+        q += " AND activity_date >= ?"
+        args.append(since)
+    q += " ORDER BY activity_date, id"
+    with connect() as conn:
+        rows = [_row(r) for r in conn.execute(q, args)]
+    # SQLite lower() only handles ASCII; preserve case-insensitive accented names.
+    return [e for e in rows if e["worker"].lower() == worker.lower()] if worker else rows
+
+
+class InvalidEntryCounts(ValueError):
+    pass
+
+
 def update(entry_id: int, fields: dict) -> dict | None:
     allowed = {
         "activity_date", "activity_type", "summary", "people_served", "youth_served", "location",
@@ -131,7 +174,20 @@ def update(entry_id: int, fields: dict) -> dict | None:
     fields = {k: (json.dumps(v) if k in LIST_FIELDS else v) for k, v in fields.items() if k in allowed}
     if not fields:
         return get(entry_id)
+    for key in ("summary", "follow_up", "neighborhood", "location", "worker"):
+        if key in fields:
+            fields[key] = privacy.scrub(fields[key])
     with connect() as conn:
+        # Read, validate and write under one lock: concurrent partial edits must
+        # validate against each other's committed values, not a stale API read.
+        conn.execute("BEGIN IMMEDIATE")
+        current = get(entry_id, conn)
+        if not current:
+            return None
+        people = fields.get("people_served", current["people_served"])
+        youth = fields.get("youth_served", current["youth_served"])
+        if youth > people:
+            raise InvalidEntryCounts("Youth served cannot exceed people served.")
         conn.execute(
             f"UPDATE entries SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
             [*fields.values(), entry_id],

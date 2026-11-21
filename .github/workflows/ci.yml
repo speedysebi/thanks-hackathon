@@ -41,6 +41,8 @@ jobs:
         run: python -m eval.integrations_test
       - name: Hostile and odd inputs, privacy scrubbing
         run: python -m eval.robustness
+      - name: Follow-ups, safe edits and simultaneous retries
+        run: python -m eval.data_correctness_test
       - name: Keyword reader accuracy stays at 88%+ on every set
         run: python -m eval.run_eval --min 88
       - name: Every SMS reply fits in one text

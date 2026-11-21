@@ -18,7 +18,7 @@ It becomes a clean record (activity, people served, youth, neighborhood, referra
 SMS commands: just text what you did · `NAME Dee` · `UNDO` · `ME` (your totals this month) · `HELP`
 
 ## What's on the dashboard
-People and youth served, referrals, hours, resolved rate · people served per week · follow-ups waiting (one tap to mark done) · by activity, neighborhood, referral partner and worker · recent entries · **Export CSV** · **Make grant report** (printable, Save as PDF).
+People and youth served, referrals, hours, resolved rate · people served per week · all open follow-ups, oldest due first (one tap to mark done; independent of the chart period) · by activity, neighborhood, referral partner and worker · recent entries · **Export CSV** · **Make grant report** (printable, Save as PDF).
 
 ## Run it (2 minutes)
 ```powershell
@@ -100,6 +100,7 @@ Also: 66/66 robustness checks, 139/139 sign-in, two-step and access checks, 48/4
 | `python -m eval.sms_cost` | SMS segments per reply |
 | `python -m eval.load_test URL N C` | N texts, C at once, against a running server |
 | `python -m eval.auth_test` | admin vs regular-person access, two-step sign-in, every route |
+| `python -m eval.data_correctness_test` | follow-up visibility, edit privacy/counts, concurrent retries and migrations |
 | `python -m eval.smoke URL PW TOTP` | quick check of a running server (CI runs it inside the Docker image) |
 | `python -m eval.integrations_test` | calendars, spreadsheet links, phone app |
 | `python -m eval.browser_test URL [dir]` | headless Edge/Chrome as iPhone, Android and desktop; saves screenshots (server needs `ADMIN_PASSWORD=sim-admin` and `ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP`) |

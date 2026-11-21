@@ -116,15 +116,14 @@ def _event(e: dict) -> dict:
             f"Logged by {e['worker']} on {e['activity_date']} (#{e['id']})",
         ] if x)
     return {"id": e["id"], "title": title, "details": details, "due": due_date(e), "sensitive": e["sensitive"],
-            "worker": e["worker"]}
+            "worker": e["worker"], "activity_date": e["activity_date"], "neighborhood": e["neighborhood"],
+            "summary": e["summary"], "follow_up": e["follow_up"]}
 
 
-def open_followups(worker: str | None = None, days: int = 120) -> list[dict]:
-    since = (date.today() - timedelta(days=days)).isoformat()
-    rows = [e for e in db.list_entries(since=since, limit=1_000_000) if e["outcome"] == "needs_follow_up"]
-    if worker:
-        rows = [e for e in rows if e["worker"].lower() == worker.lower()]
-    return [_event(e) for e in rows]
+def open_followups(worker: str | None = None, days: int | None = None) -> list[dict]:
+    since = (date.today() - timedelta(days=days)).isoformat() if days is not None else None
+    events = [_event(e) for e in db.list_followups(since=since, worker=worker)]
+    return sorted(events, key=lambda e: (e["due"], e["id"]))
 
 
 # ---------- iCalendar (RFC 5545) ----------

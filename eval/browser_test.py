@@ -289,6 +289,13 @@ async def main(base: str, shots: Path) -> int:
             await p.wait("window.IMPACT_ME && window.IMPACT_ME.admin && document.querySelectorAll('#tiles .tile').length === 6")
             check("admin lands on the dashboard", True)
             check("admin tabs", await p.tabs() == ["Log", "Text it", "Dashboard", "Report", "Connect", "Team", "Console"], await p.tabs())
+            expected_followups = admin_api.get("/api/followups").json()
+            visible_ids = await p.js("[...document.querySelectorAll('#followups button[data-id]')].map(b => +b.dataset.id)")
+            check("dashboard shows every open follow-up, including beyond the first eight",
+                  visible_ids == [f["id"] for f in expected_followups], visible_ids)
+            await p.js("document.getElementById('days').value='7'; load()")
+            check("changing the chart period keeps all unresolved follow-ups visible",
+                  int(await p.js("document.getElementById('fuCount').textContent")) == len(expected_followups))
             await p.shot(shots / "flow-6-dashboard.png")
             open_before = int(await p.js("document.getElementById('fuCount').textContent"))
             await p.js("document.querySelector('#followups button[data-id]').click()")

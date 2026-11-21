@@ -14,6 +14,7 @@
   <meta name="apple-mobile-web-app-title" content="ImpactText">
   <script src="/static/pwa.js" defer></script>
   <script src="/static/nav.js" defer></script>
+  <script src="/static/edit.js" defer></script>
   <style>
     .head { display: flex; gap: 12px; align-items: end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
     .tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
@@ -87,7 +88,7 @@
   <section class="card" style="margin-top:14px">
     <h2>Recent entries</h2>
     <div class="table-wrap"><table>
-      <thead><tr><th>Date</th><th>Who</th><th>What happened</th><th>Activity</th><th class="num">People</th><th>Status</th></tr></thead>
+      <thead><tr><th>Date</th><th>Who</th><th>What happened</th><th>Activity</th><th class="num">People</th><th>Status</th><th><span class="sr-only">Fix</span></th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
   </section>
@@ -160,14 +161,20 @@ async function load() {
     load();
   });
 
+  recent = Object.fromEntries(entries.map((e) => [e.id, e]));
   const statusPill = (o) => o === 'needs_follow_up' ? '<span class="pill warn">follow up</span>' : o === 'resolved' ? '<span class="pill ok">resolved</span>' : `<span class="pill">${nice(o)}</span>`;
   $('rows').innerHTML = entries.length ? entries.slice(0, 40).map((e) => `
     <tr><td>${esc(e.activity_date)}</td><td>${esc(e.worker)}<div class="small muted">${esc(e.channel)}</div></td>
       <td>${esc(e.summary)}${e.referred_to.length ? `<div class="small muted">→ ${esc(e.referred_to.join(', '))}</div>` : ''}</td>
-      <td>${nice(e.activity_type)}</td><td class="num">${fmt(e.people_served)}</td><td>${statusPill(e.outcome)}</td></tr>`).join('')
-    : '<tr><td colspan="6" class="empty muted">No entries yet. <a href="/">Log the first one</a>.</td></tr>';
+      <td>${nice(e.activity_type)}</td><td class="num">${fmt(e.people_served)}</td><td>${statusPill(e.outcome)}</td>
+      <td><button class="ghost small" data-edit="${e.id}" aria-label="Fix entry ${e.id}">Fix</button></td></tr>`).join('')
+    : '<tr><td colspan="7" class="empty muted">No entries yet. <a href="/">Log the first one</a>.</td></tr>';
 }
 $('days').onchange = load;
+let recent = {};
+$('rows').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-edit]'); if (b) window.editEntry(recent[b.dataset.edit], load);
+});
 load();
 document.addEventListener('click', (ev) => document.querySelectorAll('details.cal[open]').forEach((d) => { if (!d.contains(ev.target)) d.open = false; }));
 </script>

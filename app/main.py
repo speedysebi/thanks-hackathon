@@ -208,6 +208,16 @@ class EntryPatch(BaseModel):
     neighborhood: str | None = Field(default=None, max_length=80)
     follow_up: str | None = Field(default=None, max_length=300)
     hours: float | None = Field(default=None, ge=0, le=24)
+    activity_date: date | None = None  # "that was yesterday, not today"
+
+    @field_validator("activity_date")
+    @classmethod
+    def not_future(cls, v: date | None) -> date | None:
+        if v and v > date.today() + timedelta(days=1):  # one day of slack for time zones
+            raise ValueError("that day hasn't happened yet")
+        if v and v < date.today() - timedelta(days=3650):
+            raise ValueError("that day is too long ago")
+        return v
 
 
 def _own(request: Request, entry_id: int, undo: str | None = None) -> dict:
@@ -223,7 +233,10 @@ def _own(request: Request, entry_id: int, undo: str | None = None) -> dict:
 def api_update(entry_id: int, body: EntryPatch, request: Request):
     _own(request, entry_id, request.headers.get("X-Undo-Token"))
     try:
-        entry = db.update(entry_id, body.model_dump(exclude_none=True))
+        changes = body.model_dump(exclude_none=True)
+        if "activity_date" in changes:
+            changes["activity_date"] = changes["activity_date"].isoformat()
+        entry = db.update(entry_id, changes)
     except db.InvalidEntryCounts as exc:
         raise HTTPException(422, str(exc)) from exc
     if not entry:

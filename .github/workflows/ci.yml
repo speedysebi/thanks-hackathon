@@ -27,8 +27,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -56,8 +56,8 @@ jobs:
       ADMIN_TOTP_SECRET: JBSWY3DPEHPK3PXP   # test-only authenticator key; never use it for a real server
       IMPACT_DB: ${{ github.workspace }}/ci-data/impact.db
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -69,11 +69,11 @@ jobs:
           nohup python -m uvicorn app.main:app --port 8777 > ci-data/server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8777/api/health && break; sleep 1; done
       - name: Click through every flow and page
-        run: python -m eval.browser_test http://127.0.0.1:8777 screenshots
+        run: CHROME_BIN=$(command -v google-chrome) python -m eval.browser_test http://127.0.0.1:8777 screenshots
       - name: Server log
         if: failure()
         run: cat ci-data/server.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: screenshots
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build the image Render runs
         run: docker build -t impacttext:ci .
       - name: Start it with a disk at /data, like Render

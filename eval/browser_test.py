@@ -29,7 +29,8 @@ from app import mfa
 
 sys.stdout.reconfigure(encoding="utf-8")
 BROWSERS = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            shutil.which("chromium") or "", shutil.which("google-chrome") or "", shutil.which("microsoft-edge") or ""]
+            os.getenv("CHROME_BIN") or "", shutil.which("google-chrome") or "", shutil.which("microsoft-edge") or "",
+            shutil.which("chromium") or ""]  # chromium last: on Ubuntu it's often a snap wrapper that misbehaves headless
 PORT = 9333
 ADMIN_PW = os.getenv("ADMIN_PASSWORD", "sim-admin")
 ADMIN_TOTP = os.getenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")  # admins need two-step; the server must use the same
@@ -122,7 +123,8 @@ async def main(base: str, shots: Path) -> int:
     profile = tempfile.mkdtemp()
     proc = subprocess.Popen([exe, "--headless=new", f"--remote-debugging-port={PORT}", f"--user-data-dir={profile}",
                              "--no-first-run", "--window-size=1280,900",
-                             *(["--no-sandbox"] if os.getenv("CI") else []),  # GitHub's Ubuntu runners block Chrome's sandbox
+                             # GitHub's Ubuntu runners block Chrome's sandbox and have a tiny /dev/shm
+                             *(["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"] if os.getenv("CI") else []),
                              "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     admin_api = httpx.Client(base_url=base)
     assert admin_api.post("/api/auth/login", json={"name": "admin", "pin": ADMIN_PW}).json() == {"need_code": True}, \
@@ -142,13 +144,21 @@ async def main(base: str, shots: Path) -> int:
         print(f"{'PASS' if ok else 'FAIL'}  {label}{'  ' + str(detail) if detail not in ('', None) else ''}")
 
     try:
-        for _ in range(50):
+        targets = []
+        for _ in range(200):  # up to 40 s: a cold Chrome start on a CI machine is slow
             try:
-                targets = httpx.get(f"http://127.0.0.1:{PORT}/json").json()
-                break
+                targets = [t for t in httpx.get(f"http://127.0.0.1:{PORT}/json").json() if t["type"] == "page"]
+                if targets:
+                    break
             except httpx.HTTPError:
-                await asyncio.sleep(0.2)
-        ws_url = next(t["webSocketDebuggerUrl"] for t in targets if t["type"] == "page")
+                pass
+            if proc.poll() is not None:
+                raise RuntimeError(f"{exe} exited with code {proc.returncode} before opening the DevTools port")
+            await asyncio.sleep(0.2)
+        if not targets:
+            raise RuntimeError(f"{exe} didn't open DevTools on port {PORT} within 40 s")
+        ws_url = targets[0]["webSocketDebuggerUrl"]
+        print(f"Browser: {exe}")
         async with websockets.connect(ws_url, max_size=None) as ws:
             p = Page(ws)
             for domain in ("Runtime", "Page", "Network"):

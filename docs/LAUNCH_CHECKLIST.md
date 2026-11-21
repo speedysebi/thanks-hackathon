@@ -62,6 +62,11 @@ If you want `impact.comforcemke.org` (or a new domain, about $10–15/year at Cl
 - With a key: console.anthropic.com → create a key → **set a monthly spend limit** → put it in Render as `ANTHROPIC_API_KEY`.
 - Then run `python -m eval.run_eval --ai` once locally to get the real AI accuracy for the pitch. It's about 60 notes, a few cents.
 
+## 7b. Monthly report email (10 min) ⚠️ optional
+- Pick the account it's sent from (best: a ComForce mailbox). For Gmail, turn on 2-Step Verification, then Google Account → Security → **App passwords**, and make one for "ImpactText".
+- In Render, set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER=<that address>`, `SMTP_PASSWORD=<the app password>`, and `REPORT_TO=<who gets it, comma-separated>`.
+- On `/report`, press **✉ Email last month's report** once to check it arrives (and isn't in spam).
+
 ## 8. Before real ComForce data goes in ⚠️
 - **The live database has demo data if you seeded it.** `python -m app.seed --reset` wipes everything, so run it only on purpose. Real use should start from an empty database.
 - Get ComForce's OK on what gets stored: notes are scrubbed of phone numbers, emails, addresses and titled names, but a bare first name can slip through. Phone numbers from texts are stored, and are only shown as the last 4 digits.

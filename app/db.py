@@ -49,6 +49,13 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     last_login TEXT
 );
+-- monthly report emails: one row per month, so a restart or a second check never sends it twice
+CREATE TABLE IF NOT EXISTS report_sends (
+    month      TEXT PRIMARY KEY,            -- YYYY-MM the report covers
+    claimed_at TEXT,                        -- when a server started sending it
+    sent_at    TEXT,                        -- NULL while being sent
+    sent_to    TEXT NOT NULL DEFAULT ''
+);
 -- two-step sign-in (authenticator app codes). uid 0 = the built-in admin. Required for admins, optional for others.
 CREATE TABLE IF NOT EXISTS mfa (
     uid        INTEGER PRIMARY KEY,
@@ -334,6 +341,35 @@ def set_worker_name(phone: str, name: str) -> None:
             "ON CONFLICT(phone) DO UPDATE SET name = excluded.name",
             (phone, name),
         )
+
+
+# ---------- monthly report emails ----------
+def claim_report_send(month: str) -> bool:
+    """True for exactly one caller per month. A claim left unsent for over an hour (crash mid-send) can be retaken."""
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute("INSERT OR IGNORE INTO report_sends (month, claimed_at) VALUES (?, datetime('now','localtime'))",
+                        (month,)).rowcount:
+            return True
+        return conn.execute("UPDATE report_sends SET claimed_at = datetime('now','localtime') WHERE month = ? "
+                            "AND sent_at IS NULL AND claimed_at < datetime('now','localtime','-1 hour')",
+                            (month,)).rowcount == 1
+
+
+def release_report_send(month: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM report_sends WHERE month = ? AND sent_at IS NULL", (month,))
+
+
+def mark_report_sent(month: str, to: str) -> None:
+    with connect() as conn:
+        conn.execute("INSERT INTO report_sends (month) VALUES (?) ON CONFLICT(month) DO NOTHING", (month,))
+        conn.execute("UPDATE report_sends SET sent_at = datetime('now','localtime'), sent_to = ? WHERE month = ?", (to, month))
+
+
+def report_sends() -> list[dict]:
+    with connect() as conn:
+        return [dict(r) for r in conn.execute("SELECT * FROM report_sends WHERE sent_at IS NOT NULL ORDER BY month DESC LIMIT 12")]
 
 
 def clear_all() -> None:

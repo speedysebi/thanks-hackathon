@@ -15,7 +15,7 @@ It becomes a clean record (activity, people served, youth, neighborhood, referra
 | **Tap and talk** (web page, mic button) | Workers who'd rather talk than type. English or Spanish | free (browser speech recognition) |
 | **Type it** (same web page) | Office or volunteer laptop | free |
 
-SMS commands: just text what you did · `NAME Dee` · `UNDO` · `ME` (your totals this month) · `HELP`
+SMS commands: just text what you did · `NAME Dee` · `UNDO` · `ME` (your totals this month) · `LINK 123456` (code from My notes: your texts then show there too) · `HELP`
 
 ## What's on the dashboard
 People and youth served, referrals, hours, resolved rate · people served per week · all open follow-ups, oldest due first (one tap to mark done; independent of the chart period) · by activity, neighborhood, referral partner and worker · recent entries · **Export CSV** · **Make grant report** (printable, Save as PDF).

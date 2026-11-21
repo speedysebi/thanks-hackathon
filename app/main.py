@@ -39,7 +39,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app import auth, console, db, extract, impact, integrations, llm, metrics, privacy
+from app import auth, console, db, extract, impact, integrations, llm, metrics, privacy, sms_text
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = FastAPI(title="ImpactText")
@@ -280,14 +280,10 @@ def api_delete(entry_id: int, request: Request):
 
 
 # ---------- SMS (Twilio) ----------
-# "NAME Maria" / "NAME Maria Lopez". A note that just starts with the word ("Name tags for 30 kids") is a note.
-NAME_CMD = re.compile(r"^name\s+([^\d\s][^\d]{0,40}?)\s*$", re.IGNORECASE)
-LINK_CMD = re.compile(r"^link\s*(\d{6})$", re.IGNORECASE)
-
-HELP = (
-    "Text what you did, like: fed 20 kids at Sherman Park, sent a mom to 414 LIFE. "
-    "Also: NAME + your name, UNDO, ME (your totals), LINK + code from My notes"
-)
+# "NAME Maria" / "NOMBRE Maria Lopez". A note that just starts with the word ("Name tags for 30 kids") is a note.
+NAME_CMD = re.compile(r"^(name|nombre)\s+([^\d\s][^\d]{0,40}?)\s*$", re.IGNORECASE)
+LINK_CMD = re.compile(r"^(link|enlazar)\s*(\d{6})$", re.IGNORECASE)
+HELP = sms_text.TEXT["en"]["help"]
 
 
 def _twiml(msg: str) -> Response:
@@ -320,52 +316,60 @@ async def sms(request: Request):
         raise HTTPException(403)
     phone, body = form.get("From", "unknown"), form.get("Body", "").strip()
     name = db.worker_name(phone)
-    cmd = body.upper()
+    cmd, word_lang = sms_text.COMMANDS.get(" ".join(body.upper().split()), (None, None))
+
+    def reply(key: str, lang: str | None = None, **kw) -> Response:
+        return _twiml(sms_text.t(lang or sms_text.lang_for(phone, word_lang), key, **kw))
 
     linking = LINK_CMD.match(" ".join(body.split()))
     if linking:
+        word_lang = "es" if linking.group(1).lower() == "enlazar" else "en"
         # 6 digits, 15 minutes. Wrong guesses are limited per phone and across all phones, because
         # the simulator's fictional numbers are free to send from.
         if auth._limited("link:" + phone) or auth._limited("link:*", 30):
-            return _twiml("Too many wrong codes. Wait 10 minutes and try again.")
-        user = db.use_link_code(linking.group(1), phone)
+            return reply("link_many")
+        user = db.use_link_code(linking.group(2), phone)
         if not user:
             auth._fail("link:" + phone)
             auth._fail("link:*")
-            return _twiml("That code didn't work. Get a new one on My notes and text LINK + the code.")
-        return _twiml(f"Linked to {user['name'][:30]}. Your texts now show on My notes.")
+            return reply("link_bad")
+        return reply("linked", name=user["name"][:30])
 
     named = NAME_CMD.match(body)
-    if named and len(named.group(1).split()) <= 3:
-        new_name = named.group(1).strip()[:60]
+    if named and len(named.group(2).split()) <= 3:
+        word_lang = "es" if named.group(1).lower() == "nombre" else "en"
+        new_name = named.group(2).strip()[:60]
         db.set_worker_name(phone, new_name)
-        return _twiml(f"Thanks {new_name[:30]}! Just text what you did any time.")
-    if cmd in ("HELP", "?", "INFO"):
-        return _twiml(HELP)
+        return reply("named", name=new_name[:30])
+    if cmd == "lang":
+        db.set_sms_lang(phone, word_lang)
+        return reply("lang_set", word_lang)
+    if cmd == "help":
+        return reply("help")
     worker = name or f"Volunteer …{phone[-4:]}"
-    if cmd == "UNDO":
+    if cmd == "undo":
         last = db.last_entry_for(phone)  # by phone, so a shared or copied name can't undo someone else's entry
         if last and db.delete(last["id"]):
-            return _twiml(f"Removed #{last['id']}.")
-        return _twiml("Nothing to undo.")
-    if cmd in ("ME", "TOTAL", "STATS"):
+            return reply("removed", id=last["id"])
+        return reply("nothing")
+    if cmd == "me":
         since = date.today().replace(day=1).isoformat()
         mine = db.entries_for_phone(phone, since)
-        people = sum(e["people_served"] for e in mine)
-        return _twiml(f"This month: {len(mine)} activities, {people} people helped. Thank you!")
+        return reply("me", n=len(mine), people=sum(e["people_served"] for e in mine))
     if len(body) < 3:
-        return _twiml(HELP)
+        return reply("help")
 
+    lang = sms_text.lang_for(phone, body=body)
     account = db.linked_user(phone)
     if account:
         worker = account["name"]
     entry = log_note(body, worker, "sms", phone, user_id=account["id"] if account else None)
     if entry.get("duplicate"):
-        return _twiml(f"Already got that one (#{entry['id']}). Nothing new was added.")
-    reply = extract.confirmation(entry) + " UNDO to remove."
+        return reply("dup", lang, id=entry["id"])
+    text = sms_text.confirmation(entry, lang) + sms_text.t(lang, "undo_hint")
     if not name and not account:
-        reply += " Text NAME + your name for credit."
-    return _twiml(reply)
+        text += sms_text.t(lang, "name_hint")
+    return _twiml(text)
 
 
 # ---------- numbers + report ----------

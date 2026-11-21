@@ -1,0 +1,8 @@
+.env
+.venv
+.git
+data
+__pycache__
+*.pyc
+eval/results.json
+eval/sweep_results.json

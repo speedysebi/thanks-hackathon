@@ -46,6 +46,15 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     last_login TEXT
 );
+-- two-step sign-in (authenticator app codes). uid 0 = the built-in admin. Required for admins, optional for others.
+CREATE TABLE IF NOT EXISTS mfa (
+    uid        INTEGER PRIMARY KEY,
+    secret     TEXT,                        -- base32 TOTP secret once turned on
+    pending    TEXT,                        -- secret shown during setup, until the first code proves the phone has it
+    last_step  INTEGER NOT NULL DEFAULT 0,  -- last 30-second step used, so a code can't be replayed
+    recovery   TEXT NOT NULL DEFAULT '[]',  -- JSON list of sha256 hashes of unused one-time backup codes
+    enabled_at TEXT
+);
 """
 
 # columns added after the first version; old databases get them on first connect
@@ -202,7 +211,9 @@ def list_users() -> list[dict]:
     with connect() as conn:
         return [dict(r) for r in conn.execute(
             "SELECT u.id, u.name, u.role, u.created_at, u.last_login, COUNT(e.id) AS entries, "
-            "COALESCE(SUM(e.people_served), 0) AS people FROM users u LEFT JOIN entries e ON e.user_id = u.id "
+            "COALESCE(SUM(e.people_served), 0) AS people, "
+            "EXISTS (SELECT 1 FROM mfa m WHERE m.uid = u.id AND m.secret IS NOT NULL) AS mfa "
+            "FROM users u LEFT JOIN entries e ON e.user_id = u.id "
             "GROUP BY u.id ORDER BY u.role = 'admin' DESC, u.name_key")]
 
 
@@ -218,7 +229,34 @@ def delete_user(user_id: int) -> bool:
     """Their notes stay (the work still happened) but are no longer linked to an account."""
     with connect() as conn:
         conn.execute("UPDATE entries SET user_id = NULL WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM mfa WHERE uid = ?", (user_id,))
         return conn.execute("DELETE FROM users WHERE id = ?", (user_id,)).rowcount > 0
+
+
+# ---------- two-step sign-in ----------
+def get_mfa(uid: int) -> dict | None:
+    with connect() as conn:
+        r = conn.execute("SELECT * FROM mfa WHERE uid = ?", (uid,)).fetchone()
+        return dict(r) if r else None
+
+
+def set_mfa(uid: int, **fields) -> None:
+    fields = {k: v for k, v in fields.items() if k in ("secret", "pending", "last_step", "recovery", "enabled_at")}
+    with connect() as conn:
+        conn.execute("INSERT OR IGNORE INTO mfa (uid) VALUES (?)", (uid,))
+        if fields:
+            conn.execute(f"UPDATE mfa SET {', '.join(f'{k} = ?' for k in fields)} WHERE uid = ?", [*fields.values(), uid])
+
+
+def use_mfa_step(uid: int, step: int) -> bool:
+    """Atomically record that a code for `step` was used. False if that step (or a later one) was already used."""
+    with connect() as conn:
+        return conn.execute("UPDATE mfa SET last_step = ? WHERE uid = ? AND last_step < ?", (step, uid, step)).rowcount == 1
+
+
+def delete_mfa(uid: int) -> bool:
+    with connect() as conn:
+        return conn.execute("DELETE FROM mfa WHERE uid = ?", (uid,)).rowcount > 0
 
 
 def entries_for_phone(phone: str, since: str) -> list[dict]:

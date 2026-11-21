@@ -13,8 +13,11 @@
     if (me.admin) tabs.push(...ADMIN);
     const link = ([href, label]) => `<a class="tab" href="${href}"${href === here ? ' aria-current="page"' : ''}>${label}</a>`;
     const who = me.name === 'Admin' ? '' : esc(me.name);  // the built-in admin has no person's name to show
+    // name links to two-step sign-in settings; an admin who hasn't set it up yet gets a nudge instead
+    const badge = me.admin ? '<span class="pill admin">Admin</span> '
+      : me.needs_2fa ? '<a class="pill warn" href="/security">Finish admin setup</a> ' : '';
     const account = me.signed_in
-      ? `<span class="who small">${me.admin ? '<span class="pill admin">Admin</span> ' : ''}${who}</span><button type="button" class="tab linkish" id="signout">Sign out</button>`
+      ? `<a class="who small" href="/security" title="Two-step sign-in">${badge}${who}${me.mfa ? ' 🔒' : ''}</a><button type="button" class="tab linkish" id="signout">Sign out</button>`
       : `<a class="tab signin" href="/login?next=${encodeURIComponent(here)}">Sign in</a>`;
     // brand + account on top; tabs in their own row that scrolls sideways on a phone if they don't fit
     nav.innerHTML = `<a class="brand" href="/">ImpactText</a><span class="account">${account}</span><div class="tabs">${tabs.map(link).join('')}</div>`;

@@ -1,0 +1,25 @@
+# Render blueprint: Dashboard -> New -> Blueprint -> pick this repo.
+# Needs a paid "starter" instance: the free tier has no disk, and SQLite would be wiped on every deploy.
+services:
+  - type: web
+    name: impacttext
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: impact-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false          # Render asks for it when you create the service
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false          # https://your-domain (or the .onrender.com address)
+      - key: ANTHROPIC_API_KEY
+        sync: false          # optional: blank = free keyword extractor
+      - key: TWILIO_AUTH_TOKEN
+        sync: false          # optional until real texting is set up
+      - key: MODEL
+        value: claude-opus-5-5

@@ -1,6 +1,6 @@
 """
 End-to-end in a real headless browser (Edge or Chrome) over the DevTools protocol, emulating phones.
-  set ADMIN_PASSWORD=sim-admin   (the server must use this)
+  set ADMIN_PASSWORD=sim-admin and ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP   (the server must use these)
   python -m eval.browser_test http://127.0.0.1:8765 [screenshot_dir]
 Server: run with a throwaway IMPACT_DB.
 
@@ -25,11 +25,14 @@ from pathlib import Path
 import httpx
 import websockets
 
+from app import mfa
+
 sys.stdout.reconfigure(encoding="utf-8")
 BROWSERS = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             shutil.which("chromium") or "", shutil.which("google-chrome") or "", shutil.which("microsoft-edge") or ""]
 PORT = 9333
 ADMIN_PW = os.getenv("ADMIN_PASSWORD", "sim-admin")
+ADMIN_TOTP = os.getenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")  # admins need two-step; the server must use the same
 DEVICES = {
     "iphone": dict(width=390, height=844, deviceScaleFactor=3, mobile=True,
                    ua="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"),
@@ -37,8 +40,12 @@ DEVICES = {
                     ua="Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"),
     "desktop": dict(width=1280, height=800, deviceScaleFactor=1, mobile=False, ua=""),
 }
-PUBLIC_PAGES = ["/", "/phone", "/login", "/me"]
+PUBLIC_PAGES = ["/", "/phone", "/login", "/me", "/security"]
 ADMIN_PAGES = ["/dashboard", "/report", "/connect", "/team", "/console"]
+
+
+def admin_only_cookie(cookies: dict) -> bool:
+    return any(c["name"] == "it_session" for c in cookies.get("cookies", []))
 
 
 class Page:
@@ -116,9 +123,15 @@ async def main(base: str, shots: Path) -> int:
     proc = subprocess.Popen([exe, "--headless=new", f"--remote-debugging-port={PORT}", f"--user-data-dir={profile}",
                              "--no-first-run", "--window-size=1280,900", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     admin_api = httpx.Client(base_url=base)
-    assert admin_api.post("/api/auth/login", json={"name": "admin", "pin": ADMIN_PW}).status_code == 200, \
-        "server's ADMIN_PASSWORD must match this script's"
-    count = lambda: len(admin_api.get("/api/entries?limit=100000").json())  # noqa: E731
+    assert admin_api.post("/api/auth/login", json={"name": "admin", "pin": ADMIN_PW}).json() == {"need_code": True}, \
+        "server's ADMIN_PASSWORD and ADMIN_TOTP_SECRET must match this script's"
+    if time.time() % mfa.STEP > mfa.STEP - 3:  # about to roll over: wait, so the UI sign-in below gets the next code
+        time.sleep(4)
+    assert admin_api.post("/api/auth/code", json={"code": mfa.code_now(ADMIN_TOTP)}).status_code == 200, "ADMIN_TOTP_SECRET mismatch"
+    def count():
+        r = admin_api.get("/api/entries?limit=100000")
+        assert r.status_code == 200, f"admin API session lost: {r.status_code} {r.text[:120]}"
+        return len(r.json())
     fails = 0
 
     def check(label, ok, detail=""):
@@ -212,6 +225,28 @@ async def main(base: str, shots: Path) -> int:
             await p.js("document.querySelector('#followups button[data-done]').click()")
             await p.wait("document.getElementById('fuCount').textContent === '0'")
             check("marks own follow-up done", True)
+
+            # optional two-step sign-in for a regular person, set up on the phone
+            await p.goto(base + "/security")
+            await p.wait("!document.getElementById('card').hidden")
+            check("two-step: off by default for a worker, with a turn-on button", await p.js("!document.getElementById('off').hidden"))
+            check("two-step: worker isn't told it's required", await p.js("document.getElementById('required').classList.contains('hidden')"))
+            await p.js("document.getElementById('start').click()")
+            await p.wait("!document.getElementById('setup').hidden && document.querySelector('#qr svg')")
+            check("two-step: QR code shown", True)
+            await p.shot(shots / "flow-5b-2fa-setup.png")
+            key = (await p.js("document.getElementById('key').textContent")).replace(" ", "")
+            await p.js("document.getElementById('code1').value='000000'; document.getElementById('enable').requestSubmit()")
+            await p.wait("document.getElementById('msg1').classList.contains('bad')")
+            check("two-step: wrong code explained", "didn't match" in await p.js("document.getElementById('msg1').textContent"))
+            await p.js(f"document.getElementById('code1').value={json.dumps(mfa.code_now(key))}; document.getElementById('enable').requestSubmit()")
+            await p.wait("!document.getElementById('backup').hidden")
+            check("two-step: on, 10 backup codes shown", await p.js("document.querySelectorAll('#codes span').length") == 10)
+            await p.shot(shots / "flow-5c-2fa-backup-codes.png")
+            await p.js("document.getElementById('continue').click()")
+            await p.wait("location.pathname === '/me'")
+            check("two-step: continue goes to My notes, still signed in, lock shown",
+                  await p.js("window.IMPACT_ME.mfa === true && document.querySelector('nav .who').textContent.includes('🔒')"))
             await p.goto(base + "/dashboard")
             check("worker still can't open the dashboard", await p.js("location.pathname") == "/login")
 
@@ -226,6 +261,15 @@ async def main(base: str, shots: Path) -> int:
             await p.wait("document.getElementById('msg').classList.contains('bad')")
             check("wrong admin password refused", "don't match" in await p.js("document.getElementById('msg').textContent"))
             await p.js(f"document.getElementById('pin').value={json.dumps(ADMIN_PW)}; document.getElementById('form').requestSubmit()")
+            await p.wait("!document.getElementById('codeForm').classList.contains('hidden')")
+            check("right password: asks for the authenticator code, not signed in yet",
+                  await p.js("location.pathname === '/login'") and not admin_only_cookie(await p.call("Network.getCookies")))
+            await p.shot(shots / "flow-6a-admin-code.png")
+            await p.js("document.getElementById('code').value='000000'; document.getElementById('codeForm').requestSubmit()")
+            await p.wait("document.getElementById('codeMsg').classList.contains('bad')")
+            check("wrong code refused", "didn't work" in await p.js("document.getElementById('codeMsg').textContent"))
+            # next 30-second code: the current one was just used by the test's own API sign-in, and codes work once
+            await p.js(f"document.getElementById('code').value={json.dumps(mfa.code_now(ADMIN_TOTP, 1))}; document.getElementById('codeForm').requestSubmit()")
             await p.wait("location.pathname === '/dashboard'")
             await p.wait("window.IMPACT_ME && window.IMPACT_ME.admin && document.querySelectorAll('#tiles .tile').length === 6")
             check("admin lands on the dashboard", True)

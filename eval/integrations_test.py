@@ -14,6 +14,7 @@ tmp = Path(tempfile.mkdtemp())
 db.DB_PATH = tmp / "integrations.db"  # never touch the real data
 os.environ.pop("FEED_TOKEN", None)
 os.environ["ADMIN_PASSWORD"] = "test-admin"
+os.environ["ADMIN_TOTP_SECRET"] = "JBSWY3DPEHPK3PXP"  # admins need two-step sign-in; a fixed test authenticator
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -23,7 +24,9 @@ from app.main import app  # noqa: E402
 integrations.TOKEN_FILE = tmp / "feed_token.txt"
 sys.stdout.reconfigure(encoding="utf-8")
 c = TestClient(app)
-assert c.post("/api/auth/login", json={"name": "admin", "pin": "test-admin"}).status_code == 200  # admin side
+assert c.post("/api/auth/login", json={"name": "admin", "pin": "test-admin"}).json() == {"need_code": True}  # admin side
+from app import mfa  # noqa: E402
+assert c.post("/api/auth/code", json={"code": mfa.code_now("JBSWY3DPEHPK3PXP")}).status_code == 200
 anon = TestClient(app)  # a regular person, not signed in
 fails = 0
 

@@ -2,7 +2,7 @@
 ImpactText: community workers text or say what they did; it becomes a record, a dashboard and a grant report.
 
 RUN:  uvicorn app.main:app --reload     then open http://127.0.0.1:8000
-PAGES (everyone: / /phone /login /me; everything else is admin-only, see app/auth.py)
+PAGES (everyone: / /phone /login /me /security; everything else is admin-only, see app/auth.py)
   /            log page (phone-first: one box + a mic button)
   /login       sign in or make an account (optional for workers)
   /me          My notes: a signed-in person's own notes, totals and follow-ups
@@ -49,7 +49,7 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 # Everyone, no sign-in: log a note, the SMS simulator, sign in / make an account, "My notes" (the page itself
 # asks you to sign in), and the app shell. /sms is checked by Twilio's signature; /calendar and /feeds by their
 # secret token (calendar apps and Google Sheets can't sign in). EVERYTHING ELSE needs an admin.
-PUBLIC_PAGES = {"/", "/phone", "/login", "/me", "/manifest.webmanifest", "/sw.js", "/api/log", "/api/health", "/sms"}
+PUBLIC_PAGES = {"/", "/phone", "/login", "/me", "/security", "/manifest.webmanifest", "/sw.js", "/api/log", "/api/health", "/sms"}
 PUBLIC_PREFIXES = ("/static/", "/api/auth/", "/api/my/", "/calendar/", "/feeds/")
 OWN_ENTRY = re.compile(r"/api/entries/\d+")  # PATCH/DELETE: allowed for the owner or with the undo token, checked below
 
@@ -66,8 +66,13 @@ def _public(request: Request) -> bool:
 async def require_admin(request: Request, call_next):
     if not _public(request) and not auth.is_admin(request):
         wants_page = request.method == "GET" and "text/html" in request.headers.get("accept", "")
+        back = quote(request.url.path, safe="/")
+        if auth.needs_2fa_setup(request):  # right password, but admins also need the authenticator app
+            if wants_page:
+                return RedirectResponse("/security?next=" + back, status_code=303)
+            return JSONResponse({"detail": "Turn on two-step sign-in first (/security). Admins need it."}, status_code=403)
         if wants_page:  # send people to the sign-in page, then back
-            return RedirectResponse("/login?next=" + quote(request.url.path, safe="/"), status_code=303)
+            return RedirectResponse("/login?next=" + back, status_code=303)
         signed_in = auth.current_user(request) is not None
         return JSONResponse({"detail": "Admins only." if signed_in else "Sign in as an admin."},
                             status_code=403 if signed_in else 401)
@@ -85,7 +90,7 @@ def page(name: str):
     return lambda: FileResponse(STATIC / name)
 
 
-PAGES = {"/": "index.html", "/phone": "phone.html", "/login": "login.html", "/me": "me.html",  # everyone
+PAGES = {"/": "index.html", "/phone": "phone.html", "/login": "login.html", "/me": "me.html", "/security": "security.html",  # everyone
          "/dashboard": "dashboard.html", "/report": "report.html", "/console": "console.html",  # admins
          "/connect": "connect.html", "/team": "team.html"}
 for route, file in PAGES.items():
@@ -154,6 +159,14 @@ def api_log(body: LogIn, request: Request):
     entry = log_note(body.text, account["name"] if account else body.worker,
                      body.channel if body.channel in ("web", "voice") else "web",
                      logged_on=body.logged_on, user_id=account["id"] if account else None, client_id=body.client_id)
+    if entry.get("duplicate"):
+        # Counted once. Only the same phone resending its own note (same random client_id, same account or
+        # none) gets the note and its undo back; anyone else retyping it learns nothing and can't remove it.
+        same_sender = (body.client_id and entry.get("client_id") == body.client_id
+                       and entry.get("user_id") == (account["id"] if account else None))
+        if not same_sender:
+            return {"entry": {"id": None, "duplicate": True, "summary": "Already saved a moment ago. It counts once."},
+                    "confirmation": "Already saved. It counts once.", "undo_token": None}
     return {"entry": entry, "confirmation": extract.confirmation(entry), "undo_token": auth.undo_token(entry["id"])}
 
 
@@ -234,11 +247,18 @@ def _twiml(msg: str) -> Response:
                     media_type="application/xml")
 
 
+FAKE_NUMBER = re.compile(r"\+1\d{3}55501\d{2}")  # 555-0100..0199: reserved for fiction, never a real phone
+
+
 def _valid_twilio(request: Request, form: dict) -> bool:
-    """Checks Twilio's X-Twilio-Signature when TWILIO_AUTH_TOKEN is set (skip for local demo)."""
+    """Real texts must carry Twilio's X-Twilio-Signature. Without one, only the /phone simulator's fictional
+    555-01xx numbers are accepted once the app is online (TWILIO_AUTH_TOKEN set or an https PUBLIC_URL), so
+    nobody can pretend to be a worker's real number to UNDO their text or read their totals.
+    On a laptop with neither set, anything goes (local demo)."""
     token = os.getenv("TWILIO_AUTH_TOKEN")
-    if not token:
-        return True
+    online = bool(token) or os.getenv("PUBLIC_URL", "").startswith("https://")
+    if not request.headers.get("X-Twilio-Signature") or not token:
+        return not online or FAKE_NUMBER.fullmatch(form.get("From", "")) is not None
     url = os.getenv("PUBLIC_URL", "").rstrip("/") + "/sms" if os.getenv("PUBLIC_URL") else str(request.url)
     payload = url + "".join(k + form[k] for k in sorted(form))
     digest = base64.b64encode(hmac.new(token.encode(), payload.encode(), hashlib.sha1).digest()).decode()
@@ -343,7 +363,7 @@ class TeamNew(auth.Credentials):
 
 @app.post("/api/team")
 def team_add(body: TeamNew):
-    if body.name.lower() == auth.ADMIN_NAME:
+    if auth.looks_like_admin(body.name):
         raise HTTPException(400, "Pick a different name.")
     u = db.create_user(body.name, auth.hash_pin(body.pin), body.role)
     if not u:
@@ -361,6 +381,15 @@ def team_update(user_id: int, body: TeamPatch):
     if not db.get_user(user_id):
         raise HTTPException(404)
     return db.update_user(user_id, role=body.role, pin_hash=auth.hash_pin(body.pin) if body.pin else None) | {"pin_hash": None}
+
+
+@app.post("/api/team/{user_id}/reset-2fa")
+def team_reset_2fa(user_id: int):
+    """Lost phone: turns two-step off for that person. An admin is asked to set it up again before admin pages open."""
+    if not db.get_user(user_id):
+        raise HTTPException(404)
+    db.delete_mfa(user_id)
+    return {"reset": user_id}
 
 
 @app.delete("/api/team/{user_id}")

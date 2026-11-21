@@ -20,7 +20,10 @@ from app.main import app  # noqa: E402
 sys.stdout.reconfigure(encoding="utf-8")
 c = TestClient(app, raise_server_exceptions=False)
 os.environ["ADMIN_PASSWORD"] = "robust-admin"
+os.environ["ADMIN_TOTP_SECRET"] = "JBSWY3DPEHPK3PXP"  # admins need two-step sign-in; a fixed test authenticator
 c.post("/api/auth/login", json={"name": "admin", "pin": "robust-admin"})  # these checks use admin endpoints too
+from app import mfa  # noqa: E402
+c.post("/api/auth/code", json={"code": mfa.code_now("JBSWY3DPEHPK3PXP")})
 
 CASES = [
     ("empty", ""),

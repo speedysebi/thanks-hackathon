@@ -41,6 +41,14 @@
       <button id="go">Sign in</button>
       <p class="small msg" id="msg" aria-live="polite"></p>
     </form>
+    <form id="codeForm" class="grid hidden">
+      <p class="small muted" style="margin:0">Open your authenticator app and type the 6-digit code for ImpactText. Lost your phone? Type one of your backup codes.</p>
+      <label>Code <input id="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="20" placeholder="123456"
+                         style="font-size:22px;letter-spacing:4px;text-align:center"></label>
+      <button id="goCode">Sign in</button>
+      <p class="small msg" id="codeMsg" aria-live="polite"></p>
+      <p class="small" style="margin:0"><a href="" id="restart">← Start over</a></p>
+    </form>
     <p class="small muted" style="margin:6px 0 0" id="admin-hint">Admins: sign in with the name <b>admin</b> and the admin password.</p>
   </section>
   <p class="skip small"><a href="/" id="skip">Skip: log without an account →</a></p>
@@ -48,7 +56,9 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const next = (params.get('next') || '/').startsWith('/') && !(params.get('next') || '').startsWith('//') ? (params.get('next') || '/') : '/';
+// only same-site paths: "/x" yes; "//evil.com", "/\evil.com", "https://..." no
+const rawNext = params.get('next') || '/';
+const next = /^\/(?![\/\\])/.test(rawNext) && new URL(rawNext, location.origin).origin === location.origin ? rawNext : '/';
 const ADMIN_PAGES = ['/dashboard', '/report', '/connect', '/team', '/console'];
 let mode = 'in';
 
@@ -90,13 +100,38 @@ $('form').onsubmit = async (e) => {
       const d = body.detail;
       throw new Error(typeof d === 'string' ? d : r.status === 422 ? 'Use a PIN of 4+ numbers, or a password of 6+ characters.' : 'Something went wrong.');
     }
-    try { if (body.role !== 'admin' || body.name !== 'Admin') localStorage.setItem('worker', body.name); } catch {}
-    location.href = body.role === 'admin' && next === '/' ? '/dashboard' : next;
+    if (body.need_code) {  // PIN was right; two-step sign-in is on for this account
+      $('form').classList.add('hidden'); $('tab-up').closest('.switch').classList.add('hidden'); $('admin-hint').classList.add('hidden');
+      $('codeForm').classList.remove('hidden'); $('code').focus();
+      $('go').disabled = false;
+      return;
+    }
+    done(body);
   } catch (err) {
     $('msg').className = 'small msg bad'; $('msg').textContent = err.message === 'Failed to fetch' ? 'No connection. Try again.' : err.message;
     $('go').disabled = false;
   }
 };
+function done(body) {
+  try { if (body.role !== 'admin' || body.name !== 'Admin') localStorage.setItem('worker', body.name); } catch {}
+  if (body.setup_2fa) { location.href = '/security?next=' + encodeURIComponent(next === '/' ? '/dashboard' : next); return; }
+  location.href = body.role === 'admin' && next === '/' ? '/dashboard' : next;
+}
+$('codeForm').onsubmit = async (e) => {
+  e.preventDefault();
+  $('goCode').disabled = true; $('codeMsg').className = 'small msg'; $('codeMsg').textContent = 'Checking…';
+  try {
+    const r = await fetch('/api/auth/code', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ code: $('code').value }) });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : r.status === 422 ? 'Type the 6-digit code.' : 'Something went wrong.');
+    done(body);
+  } catch (err) {
+    $('codeMsg').className = 'small msg bad'; $('codeMsg').textContent = err.message === 'Failed to fetch' ? 'No connection. Try again.' : err.message;
+    $('goCode').disabled = false; $('code').select();
+  }
+};
+$('restart').onclick = (e) => { e.preventDefault(); location.reload(); };
 $('name').focus();
 </script>
 </body>

@@ -46,7 +46,7 @@ code { overflow-wrap: anywhere; }
 html, body { overflow-x: hidden; }
 nav .tabs { display: flex; gap: 4px; order: 1; }
 nav .account { display: inline-flex; gap: 6px; align-items: center; order: 2; margin-left: 6px; padding-left: 8px; border-left: 1px solid var(--line); }
-nav .who { color: var(--muted); max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+nav .who { color: var(--muted); text-decoration: none; max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 nav .linkish { background: none; border: 0; font: inherit; font-size: 15px; color: var(--muted); padding: 6px 10px; font-weight: 400; cursor: pointer; }
 nav .signin { color: var(--ink); border: 1px solid var(--line); }
 .pill.admin { background: var(--ink); color: var(--bg); font-size: 12px; padding: 1px 8px; }

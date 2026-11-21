@@ -83,12 +83,14 @@ async function load() {
   $('count').textContent = users.length;
   $('rows').innerHTML = users.length ? users.map((u) => `<tr>
     <td><b>${esc(u.name)}</b></td>
-    <td>${u.role === 'admin' ? '<span class="pill admin">Admin</span>' : '<span class="pill">Worker</span>'}</td>
+    <td>${u.role === 'admin' ? '<span class="pill admin">Admin</span>' : '<span class="pill">Worker</span>'}
+      ${u.mfa ? '<span class="pill ok" title="Two-step sign-in on">2-step on</span>' : u.role === 'admin' ? '<span class="pill warn" title="Will be asked to set it up at sign-in">2-step not set up</span>' : ''}</td>
     <td class="num" data-label="Notes">${u.entries}</td><td class="num" data-label="People helped">${Number(u.people).toLocaleString()}</td>
     <td class="small muted when" data-label="Last sign-in">${esc(u.last_login ? u.last_login.slice(0, 16) : 'never')}</td>
     <td><div class="acts">
       <button class="ghost" data-role="${u.id}" data-to="${u.role === 'admin' ? 'worker' : 'admin'}">${u.role === 'admin' ? 'Make worker' : 'Make admin'}</button>
       <button class="ghost" data-pin="${u.id}" data-name="${esc(u.name)}">New PIN</button>
+      ${u.mfa ? `<button class="ghost" data-mfa="${u.id}" data-name="${esc(u.name)}">Reset 2-step</button>` : ''}
       <button class="ghost" data-del="${u.id}" data-name="${esc(u.name)}">Remove</button>
     </div></td></tr>`).join('') : '<tr><td colspan="6" class="small muted">Nobody has made an account yet.</td></tr>';
 }
@@ -101,6 +103,10 @@ $('rows').addEventListener('click', async (ev) => {
       if (!pin) return;
       await api('/api/team/' + b.dataset.pin, { method: 'PATCH', body: JSON.stringify({ pin }) });
       alert('PIN changed.');
+    }
+    if (b.dataset.mfa) {
+      if (!confirm(`Reset two-step sign-in for ${b.dataset.name}? Do this only if they lost their phone and you've confirmed it's them. If they're an admin, they'll set it up again at their next sign-in.`)) return;
+      await api('/api/team/' + b.dataset.mfa + '/reset-2fa', { method: 'POST' });
     }
     if (b.dataset.del) {
       if (!confirm(`Remove ${b.dataset.name}'s account? Their notes stay.`)) return;

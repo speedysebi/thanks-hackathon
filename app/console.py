@@ -13,7 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app import auth, db, extract, llm, privacy, seed
+from app import auth, db, extract, llm, mfa, privacy, seed
 
 ROOT = Path(__file__).resolve().parent.parent
 EVAL = ROOT / "eval"
@@ -98,6 +98,14 @@ def status():
         step("password", "Choose the admin password", env["password"],
              "Set in .env." if env["password"] else "The admin side uses a made-up password (data/admin_password.txt, also printed when the server starts).",
              "Put ADMIN_PASSWORD=... in .env and restart. Share it only with admins."),
+        step("backup", "Save the admin's backup codes", mfa.env_admin_secret() is not None or mfa.backup_codes_left(0) > 0,
+             "The built-in admin's authenticator is set by ADMIN_TOTP_SECRET." if mfa.env_admin_secret()
+             else f"{mfa.backup_codes_left(0)} of 10 backup codes left for the built-in admin.",
+             "Two-step sign-in is on (you're signed in). Keep the backup codes in a password manager; "
+             "if they run out, make new ones on /security."),
+        step("online", "Put it online", bool(env["public_url"]),
+             "PUBLIC_URL is set." if env["public_url"] else "Running on this computer only.",
+             "Follow docs/LAUNCH_CHECKLIST.md (Render blueprint, admin setup, who owns which account)."),
         step("twilio", "Connect a real Twilio number", env["twilio"] and bool(env["public_url"]),
              "Signature check is on." if env["twilio"] else "Texts only work through the /phone simulator.",
              "See docs/SMS_SETUP.md; set TWILIO_AUTH_TOKEN and PUBLIC_URL."),

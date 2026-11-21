@@ -30,16 +30,25 @@ uvicorn app.main:app --reload   # prints the admin password if you didn't set AD
 ```
 Open http://127.0.0.1:8000.
 
+**Putting it online:** `render.yaml` + `Dockerfile` (Render → New → Blueprint, Starter plan + 1 GB disk). The steps that need a person (accounts, domain, admin setup, Twilio registration) are in **[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md)**.
+
 ## Two sides: regular people and admins
 | | Who | Pages | Sign-in |
 |---|---|---|---|
 | **Regular person** | Workers, volunteers | `/` log (type or talk) · `/phone` text simulator · `/me` My notes | **Optional.** Anyone can log and undo what they just saved. An account (name + PIN, made at `/login`) adds My notes: their own totals and follow-ups, and fixing or removing their own notes from any phone. |
-| **Admin** | ComForce staff | `/dashboard` · `/report` · `/connect` (calendars, sheets, phone setup) · `/team` (accounts) · `/console` (testing) · CSV export | **Required.** Name `admin` + `ADMIN_PASSWORD` from `.env`, or any account an admin has promoted on `/team`. |
+| **Admin** | ComForce staff | `/dashboard` · `/report` · `/connect` (calendars, sheets, phone setup) · `/team` (accounts) · `/console` (testing) · CSV export | **Required, plus two-step sign-in.** Name `admin` + `ADMIN_PASSWORD` from `.env`, or any account an admin has promoted on `/team`, then a 6-digit code from an authenticator app. |
+
+**Two-step sign-in** (`/security`):
+- **Required for admins.** The first time an admin signs in, they scan a QR code with Google Authenticator, Microsoft Authenticator, Authy or similar. Until then, the only page they can open is that setup page.
+- **Optional for everyone else.** Turning it on also signs out that person's other devices.
+- Each code works once. Setup gives 10 one-time backup codes for a lost phone.
+- Lost phone: an admin presses **Reset 2-step** on `/team`. For the built-in admin, run `python -m app.mfa reset admin` on the server.
+- Standard TOTP, no SMS, no outside service, no cost.
 
 - Texting (`/sms`) needs no account; texts are tied to the sender's phone.
 - If `ADMIN_PASSWORD` isn't set, the server makes one up, saves it in `data/admin_password.txt` and prints it at startup, so the admin side is never left open by accident.
 - Signed-in sessions are a signed cookie. Changing someone's role or removing their account on `/team` takes effect on their next click. PINs are stored as PBKDF2 hashes, and 5 wrong tries lock that name for 10 minutes.
-- Tests: `python -m eval.auth_test` checks all 47 routes are either public on purpose or admin-only.
+- Tests: `python -m eval.auth_test` checks every route is either public on purpose or admin-only. Two separate reviews (a code read, and 361 attack requests against a running server) found no way for a regular person to reach admin data.
 
 ## On phones and in the apps people already use (`/connect`)
 - **Phone app:** add ImpactText to the home screen (iPhone: Share → Add to Home Screen; Android: Install app). Notes saved with no signal stay on the phone and send themselves later, keeping the day they happened.
@@ -68,7 +77,9 @@ Typed note ───┘         Claude + JSON schema (strict)
 - The AI only fills in fields. Every number in the report comes from the database, and the report prompt forbids inventing figures.
 - **Never fails in the field.** If the AI is down, the note is still saved by the keyword extractor.
 - `UNDO` only removes your own text from the last 24 hours. Texts are tied to the sender's phone, so two workers who pick the same `NAME` can't undo or merge each other's entries. Phone numbers only ever leave the server as the last 4 digits.
-- **Only admins see everyone's data.** A regular person sees only their own notes, and only if they make an account. Set your own `ADMIN_PASSWORD` in `.env` before real data goes in. `/sms` stays open because Twilio is verified by signature.
+- **Only admins see everyone's data**, and admins need two-step sign-in. A regular person sees only their own notes, and only if they make an account. Set your own `ADMIN_PASSWORD` in `.env` before real data goes in.
+- **Texts:** once online, `/sms` only accepts texts signed by Twilio. The exception is the `/phone` simulator's fictional 555-01xx numbers. Nobody can pretend to be a worker's phone to undo their text or read their totals.
+- Someone retyping another person's note gets "already saved", not the note or a way to undo it.
 - A note resent by a phone (lost reply, offline queue) carries the same random id, so it counts once even hours later.
 
 ## Measured (details in docs/EXPERIMENTS.md)
@@ -78,7 +89,7 @@ Typed note ───┘         Claude + JSON schema (strict)
 | Keywords v2 (current free fallback) | **90.6–91.1%** | **91.1%** |
 | Claude | run `python -m eval.run_eval --ai` | |
 
-Also: 66/66 robustness checks, 82/82 sign-in and access checks, 48/48 calendar/phone-app checks, 36/36 browser checks on an emulated iPhone, Android and desktop (78 page views in light and dark mode), 200 texts/sec with zero errors, every SMS reply fits one segment.
+Also: 66/66 robustness checks, 139/139 sign-in, two-step and access checks, 48/48 calendar/phone-app checks, 43/43 browser checks on an emulated iPhone, Android and desktop (90 page views in light and dark mode), 200 texts/sec with zero errors, every SMS reply fits one segment.
 `/api/stats` shows real latency, token use and cost per note while you demo.
 
 | Command | What it does |
@@ -88,9 +99,9 @@ Also: 66/66 robustness checks, 82/82 sign-in and access checks, 48/48 calendar/p
 | `python -m eval.robustness` | hostile and odd inputs, privacy check |
 | `python -m eval.sms_cost` | SMS segments per reply |
 | `python -m eval.load_test URL N C` | N texts, C at once, against a running server |
-| `python -m eval.auth_test` | admin vs regular-person access, every route |
+| `python -m eval.auth_test` | admin vs regular-person access, two-step sign-in, every route |
 | `python -m eval.integrations_test` | calendars, spreadsheet links, phone app |
-| `python -m eval.browser_test URL [dir]` | headless Edge/Chrome as iPhone, Android and desktop; saves screenshots (server needs `ADMIN_PASSWORD=sim-admin`) |
+| `python -m eval.browser_test URL [dir]` | headless Edge/Chrome as iPhone, Android and desktop; saves screenshots (server needs `ADMIN_PASSWORD=sim-admin` and `ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP`) |
 
 ## Cost to run (estimates; check current prices)
 | Item | Monthly |

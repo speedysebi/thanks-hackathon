@@ -6,6 +6,9 @@ services:
     runtime: docker
     plan: starter
     healthCheckPath: /api/health
+    # Deploys come from GitHub Actions (.github/workflows/ci.yml) only after every test passes:
+    # put this service's Deploy Hook URL in the repo secret RENDER_DEPLOY_HOOK_URL.
+    autoDeploy: false
     disk:
       name: impact-data
       mountPath: /data

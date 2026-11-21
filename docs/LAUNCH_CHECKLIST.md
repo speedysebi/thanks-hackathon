@@ -25,8 +25,9 @@ The repo now has a `Dockerfile` and `render.yaml`.
 3. Plan: **Starter (about $7/month) + 1 GB disk (about $0.25/month)**. Check current prices. The **free plan won't work**: it has no disk, so every deploy or restart deletes all notes and accounts.
 4. After it's up, copy the `https://impacttext-xxxx.onrender.com` address into `PUBLIC_URL` and redeploy.
 5. Open `/api/health` and check it says `"ok": true`.
+6. **Turn on automatic deploys through CI.** In Render, go to the service → Settings → **Deploy Hook** and copy the URL. In GitHub, go to repo → Settings → Secrets and variables → Actions → **New repository secret**, name it `RENDER_DEPLOY_HOOK_URL`, and paste. From then on, every push to `main` deploys only if all CI jobs pass. `render.yaml` turns off Render's own auto-deploy so a broken commit never goes live. Without the secret, CI still runs and just says "Not deployed".
 
-**Not verified yet:** the Docker image hasn't been test-built, because Docker Desktop wasn't running. If the Render build fails, the fallback is a native Python service:
+CI (GitHub Actions) builds this exact Docker image on every push. It starts the image with a disk, signs in as admin with two-step, saves a note, restarts, and checks the note is still there. If a Render build ever fails anyway, the fallback is a native Python service:
 - Build: `pip install -r requirements.txt`
 - Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'`
 - Env: `IMPACT_DB=/data/impact.db`, with the disk mounted at `/data`

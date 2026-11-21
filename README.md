@@ -30,7 +30,7 @@ uvicorn app.main:app --reload   # prints the admin password if you didn't set AD
 ```
 Open http://127.0.0.1:8000.
 
-**Putting it online:** `render.yaml` + `Dockerfile` (Render → New → Blueprint, Starter plan + 1 GB disk). The steps that need a person (accounts, domain, admin setup, Twilio registration) are in **[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md)**.
+**Putting it online:** `render.yaml` + `Dockerfile` (Render → New → Blueprint, Starter plan + 1 GB disk). **CI/CD:** GitHub Actions (`.github/workflows/ci.yml`) runs every test, the emulated-phone browser test, and a build + smoke test of the Docker image on each push and PR. Pushes to `main` deploy to Render only when all of that passes (needs the `RENDER_DEPLOY_HOOK_URL` secret). The steps that need a person (accounts, domain, admin setup, Twilio registration) are in **[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md)**.
 
 ## Two sides: regular people and admins
 | | Who | Pages | Sign-in |
@@ -100,6 +100,7 @@ Also: 66/66 robustness checks, 139/139 sign-in, two-step and access checks, 48/4
 | `python -m eval.sms_cost` | SMS segments per reply |
 | `python -m eval.load_test URL N C` | N texts, C at once, against a running server |
 | `python -m eval.auth_test` | admin vs regular-person access, two-step sign-in, every route |
+| `python -m eval.smoke URL PW TOTP` | quick check of a running server (CI runs it inside the Docker image) |
 | `python -m eval.integrations_test` | calendars, spreadsheet links, phone app |
 | `python -m eval.browser_test URL [dir]` | headless Edge/Chrome as iPhone, Android and desktop; saves screenshots (server needs `ADMIN_PASSWORD=sim-admin` and `ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP`) |
 

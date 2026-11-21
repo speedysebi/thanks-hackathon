@@ -121,7 +121,9 @@ async def main(base: str, shots: Path) -> int:
     shots.mkdir(parents=True, exist_ok=True)
     profile = tempfile.mkdtemp()
     proc = subprocess.Popen([exe, "--headless=new", f"--remote-debugging-port={PORT}", f"--user-data-dir={profile}",
-                             "--no-first-run", "--window-size=1280,900", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                             "--no-first-run", "--window-size=1280,900",
+                             *(["--no-sandbox"] if os.getenv("CI") else []),  # GitHub's Ubuntu runners block Chrome's sandbox
+                             "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     admin_api = httpx.Client(base_url=base)
     assert admin_api.post("/api/auth/login", json={"name": "admin", "pin": ADMIN_PW}).json() == {"need_code": True}, \
         "server's ADMIN_PASSWORD and ADMIN_TOTP_SECRET must match this script's"

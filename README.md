@@ -112,6 +112,12 @@ Also: 66/66 robustness checks, 139/139 sign-in, two-step and access checks, 48/4
 | Hosting (small Render/Railway/Fly instance with a disk) | $0–7 |
 
 ## Not done yet / next
-Link a worker's account to their texting phone number · per-entry edit form · Spanish SMS replies · scheduled monthly report emailed to ComForce · Google Sheets sync.
+In review: link a worker's account to their texting phone (#8) · "Fix" form for a note (#7) · Spanish SMS replies (#9) · monthly report emailed to ComForce (#10).
+
+Still open:
+- **Tested on real phones:** the mic button, Add to Home Screen, and the offline queue have only run in emulated phones (see the launch checklist, step 9).
+- **AI accuracy:** run `python -m eval.run_eval --ai` once there's an API key. The 91% figure is for the free keyword reader.
+- **Texting for real:** Twilio A2P 10DLC registration takes days to weeks. Until it's done, use a trial number or the `/phone` simulator.
+- **Google Sheets:** the live `=IMPORTDATA` link on `/connect` already keeps a sheet up to date (Sheets refreshes it about every hour). Pushing rows into a sheet on every note would need a Google Cloud project and OAuth, so we're leaving it out unless ComForce asks for it.
 
 *Demo data is synthetic. No real ComForce records are in this repo.*

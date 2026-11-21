@@ -38,6 +38,12 @@
     code.block { display: block; padding: 10px 12px; border-radius: 10px; background: var(--track); font-size: 13px; white-space: pre-wrap; }
     details summary { cursor: pointer; font-size: 15px; }
     .muted a { color: inherit; }
+    /* small phones: grid columns shrink to the screen instead of growing to fit a long link or command */
+    .stack, .sub { grid-template-columns: minmax(0, 1fr); }
+    @media (max-width: 560px) { .phone { grid-template-columns: minmax(0, 1fr); } }
+    .stack > *, .sub > *, .phone > *, .two > * { min-width: 0; }
+    code, .note, .sub p { overflow-wrap: anywhere; }
+    .copy input { flex: 1 1 auto; width: auto; }
   </style>
 </head>
 <body>

@@ -52,7 +52,11 @@ nav .signin { color: var(--ink); border: 1px solid var(--line); }
 .pill.admin { background: var(--ink); color: var(--bg); font-size: 12px; padding: 1px 8px; }
 @media (max-width: 640px) {
   /* phone: brand + account on top, tabs on one row below that scrolls sideways instead of wrapping */
-  nav .account { margin-left: 0; padding-left: 0; border-left: 0; }
+  nav .account { margin-left: 0; padding-left: 0; border-left: 0; min-width: 0; flex: 0 1 auto; }
+  /* small phones / big text: the name+badge shrinks (…) instead of pushing "Sign out" off the screen */
+  nav .brand { flex: none; }
+  nav .who { min-width: 0; flex: 0 1 auto; }
+  nav .account .linkish, nav .account .signin { flex: none; padding: 6px 8px; }
   nav .tabs { order: 3; flex: 1 0 100%; overflow-x: auto; scrollbar-width: none; margin: 2px -16px 0; padding: 2px 16px; }
   nav .tabs::-webkit-scrollbar { display: none; }
   nav .tabs a.tab { white-space: nowrap; }

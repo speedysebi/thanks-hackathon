@@ -39,6 +39,9 @@ DEVICES = {
                    ua="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"),
     "android": dict(width=412, height=915, deviceScaleFactor=2.625, mobile=True,
                     ua="Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"),
+    # small/cheap phones (iPhone SE 1st gen, budget Android), and a stand-in for phones set to bigger text
+    "small-phone": dict(width=320, height=640, deviceScaleFactor=2, mobile=True,
+                        ua="Mozilla/5.0 (Linux; Android 12; SM-A035F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"),
     "desktop": dict(width=1280, height=800, deviceScaleFactor=1, mobile=False, ua=""),
 }
 PUBLIC_PAGES = ["/", "/phone", "/login", "/me", "/security"]

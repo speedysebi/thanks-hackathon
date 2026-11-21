@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImpactText · My notes</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
+  <style>
+    main { max-width: 640px; }
+    .head { display: flex; gap: 10px; align-items: end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .tile b { display: block; font-size: 28px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .tile span { color: var(--muted); font-size: 14px; }
+    .note { padding: 12px 0; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+    .note:first-child { border-top: 0; }
+    .note .top { display: flex; gap: 8px; justify-content: space-between; align-items: start; }
+    .note .acts { display: flex; gap: 6px; flex: none; }
+    .note button { padding: 6px 12px; font-size: 14px; }
+    section.card + section.card { margin-top: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <nav data-nav></nav>
+
+  <section id="signedOut" class="card hidden">
+    <h1>My notes</h1>
+    <p class="muted">Sign in to see what you've logged, your totals, and follow-ups you still owe. You never need an account just to log.</p>
+    <a class="btn" href="/login?next=/me">Sign in or make an account</a>
+  </section>
+
+  <div id="signedIn" class="hidden">
+    <div class="head">
+      <div><h1>Your work, <span id="name"></span></h1><p class="small muted" style="margin:4px 0 0">Only you and ComForce admins can see this.</p></div>
+      <select id="days" style="width:auto" aria-label="Period">
+        <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option>
+      </select>
+    </div>
+    <div class="tiles" id="tiles"></div>
+    <section class="card"><h2>Follow-ups you still owe <span class="pill" id="fuCount">0</span></h2><div id="followups"></div></section>
+    <section class="card"><h2>Everything you logged</h2><div id="notes"></div></section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (n) => Number(n).toLocaleString();
+
+async function load() {
+  const r = await fetch('/api/my/entries?days=' + $('days').value);
+  if (r.status === 401) { $('signedOut').classList.remove('hidden'); $('signedIn').classList.add('hidden'); return; }
+  const { name, entries, totals } = await r.json();
+  $('signedOut').classList.add('hidden'); $('signedIn').classList.remove('hidden');
+  $('name').textContent = name;
+  $('tiles').innerHTML = [['People helped', totals.people], ['Youth', totals.youth], ['Activities', totals.activities], ['Hours', totals.hours]]
+    .map(([l, v]) => `<div class="card tile"><b>${fmt(v)}</b><span>${l}</span></div>`).join('');
+  const fus = entries.filter((e) => e.outcome === 'needs_follow_up');
+  $('fuCount').textContent = fus.length;
+  $('followups').innerHTML = fus.length ? fus.map((e) => row(e, true)).join('') : '<p class="small muted">You\'re all caught up.</p>';
+  $('notes').innerHTML = entries.length ? entries.map((e) => row(e, false)).join('')
+    : '<p class="small muted">Nothing in this period yet. <a href="/">Log something</a>.</p>';
+}
+function row(e, fu) {
+  const meta = [e.activity_date, e.activity_type.replaceAll('_', ' '), e.people_served ? `${e.people_served} people` : '', e.neighborhood].filter(Boolean).join(' · ');
+  return `<div class="note"><div class="top"><div>${esc(fu ? (e.follow_up || e.summary) : e.summary)}</div>
+    <div class="acts">${fu ? `<button class="ghost" data-done="${e.id}">✓ Done</button>` : `<button class="ghost" data-del="${e.id}" aria-label="Remove note ${e.id}">Remove</button>`}</div></div>
+    <div class="small muted">${esc(meta)}</div></div>`;
+}
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-done], button[data-del]'); if (!b) return;
+  if (b.dataset.del && !confirm('Remove this note? It will no longer count in ComForce\'s totals.')) return;
+  b.disabled = true;
+  const id = b.dataset.done || b.dataset.del;
+  const r = await fetch('/api/entries/' + id, b.dataset.done
+    ? { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ outcome: 'resolved' }) }
+    : { method: 'DELETE' });
+  if (!r.ok) alert('That did not work (' + r.status + ').');
+  load();
+});
+$('days').onchange = load;
+load();
+</script>
+</body>
+</html>

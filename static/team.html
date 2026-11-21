@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImpactText · Team</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
+  <style>
+    main { max-width: 860px; }
+    .card + .card { margin-top: 14px; }
+    .add { display: grid; grid-template-columns: 1fr 1fr auto auto; gap: 8px; align-items: end; }
+    .add label { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+    @media (max-width: 640px) { .add { grid-template-columns: 1fr 1fr; } .add button { grid-column: 1 / -1; } }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 15px; }
+    th, td { text-align: left; padding: 9px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
+    th { color: var(--muted); font-weight: 500; border-top: 0; font-size: 14px; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+    td button { padding: 6px 10px; font-size: 14px; }
+    .msg.bad { color: var(--accent); }
+    .msg { margin: 8px 0 0; } .msg:empty { display: none; }
+    /* phone: each person becomes a small card instead of a squeezed table row */
+    @media (max-width: 640px) {
+      thead { display: none; }
+      table, tbody { display: block; }
+      tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+      tbody tr:first-child { border-top: 0; }
+      td { border: 0; padding: 0; }
+      td.num, td.when { grid-column: 1 / -1; text-align: left; font-size: 14px; color: var(--muted); }
+      td.num::before, td.when::before { content: attr(data-label) ": "; }
+      td .acts { grid-column: 1 / -1; justify-content: flex-start; margin-top: 8px; }
+      td:last-child { grid-column: 1 / -1; }
+    }
+    .warnbox { background: var(--warn-bg); color: var(--warn); padding: 10px 12px; border-radius: 10px; font-size: 14px; margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <nav data-nav></nav>
+  <h1 style="margin-bottom:4px">Team</h1>
+  <p class="small muted" style="margin:0 0 14px">Accounts are optional for workers: anyone can log without one. An account lets a person see and fix their own notes. Admins see everything.</p>
+  <div id="pwWarn" class="warnbox hidden">The built-in admin password was made up by the server (it's in <code>data/admin_password.txt</code>). Set <code>ADMIN_PASSWORD</code> in <code>.env</code> to choose your own.</div>
+
+  <section class="card">
+    <h2>Add a person</h2>
+    <form id="add" class="add">
+      <label>Name <input id="n" required maxlength="40" autocomplete="off"></label>
+      <label>Starting PIN <input id="p" required minlength="4" maxlength="128" autocomplete="new-password"></label>
+      <label>Role <select id="r" style="width:auto"><option value="worker">Worker</option><option value="admin">Admin</option></select></label>
+      <button>Add</button>
+    </form>
+    <p class="small msg" id="addMsg" aria-live="polite"></p>
+  </section>
+
+  <section class="card">
+    <h2>People with accounts <span class="pill" id="count">0</span></h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Name</th><th>Role</th><th class="num">Notes</th><th class="num">People helped</th><th>Last sign-in</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <p class="small muted" style="margin:10px 0 0">The built-in <b>admin</b> sign-in isn't listed; its password lives in <code>.env</code>. Removing an account keeps that person's notes.</p>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function api(path, opts = {}) {
+  const r = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof body.detail === 'string' ? body.detail : r.status === 422 ? 'PIN needs at least 4 characters.' : 'HTTP ' + r.status);
+  return body;
+}
+async function load() {
+  const { users, admin_password_from_env } = await api('/api/team');
+  $('pwWarn').classList.toggle('hidden', admin_password_from_env);
+  $('count').textContent = users.length;
+  $('rows').innerHTML = users.length ? users.map((u) => `<tr>
+    <td><b>${esc(u.name)}</b></td>
+    <td>${u.role === 'admin' ? '<span class="pill admin">Admin</span>' : '<span class="pill">Worker</span>'}
+      ${u.mfa ? '<span class="pill ok" title="Two-step sign-in on">2-step on</span>' : u.role === 'admin' ? '<span class="pill warn" title="Will be asked to set it up at sign-in">2-step not set up</span>' : ''}</td>
+    <td class="num" data-label="Notes">${u.entries}</td><td class="num" data-label="People helped">${Number(u.people).toLocaleString()}</td>
+    <td class="small muted when" data-label="Last sign-in">${esc(u.last_login ? u.last_login.slice(0, 16) : 'never')}</td>
+    <td><div class="acts">
+      <button class="ghost" data-role="${u.id}" data-to="${u.role === 'admin' ? 'worker' : 'admin'}">${u.role === 'admin' ? 'Make worker' : 'Make admin'}</button>
+      <button class="ghost" data-pin="${u.id}" data-name="${esc(u.name)}">New PIN</button>
+      ${u.mfa ? `<button class="ghost" data-mfa="${u.id}" data-name="${esc(u.name)}">Reset 2-step</button>` : ''}
+      <button class="ghost" data-del="${u.id}" data-name="${esc(u.name)}">Remove</button>
+    </div></td></tr>`).join('') : '<tr><td colspan="6" class="small muted">Nobody has made an account yet.</td></tr>';
+}
+$('rows').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  try {
+    if (b.dataset.role) await api('/api/team/' + b.dataset.role, { method: 'PATCH', body: JSON.stringify({ role: b.dataset.to }) });
+    if (b.dataset.pin) {
+      const pin = prompt(`New PIN for ${b.dataset.name} (4+ characters). Tell them in person.`);
+      if (!pin) return;
+      await api('/api/team/' + b.dataset.pin, { method: 'PATCH', body: JSON.stringify({ pin }) });
+      alert('PIN changed.');
+    }
+    if (b.dataset.mfa) {
+      if (!confirm(`Reset two-step sign-in for ${b.dataset.name}? Do this only if they lost their phone and you've confirmed it's them. If they're an admin, they'll set it up again at their next sign-in.`)) return;
+      await api('/api/team/' + b.dataset.mfa + '/reset-2fa', { method: 'POST' });
+    }
+    if (b.dataset.del) {
+      if (!confirm(`Remove ${b.dataset.name}'s account? Their notes stay.`)) return;
+      await api('/api/team/' + b.dataset.del, { method: 'DELETE' });
+    }
+    load();
+  } catch (e) { alert(e.message); }
+});
+$('add').onsubmit = async (e) => {
+  e.preventDefault();
+  $('addMsg').className = 'small msg';
+  try {
+    const u = await api('/api/team', { method: 'POST', body: JSON.stringify({ name: $('n').value, pin: $('p').value, role: $('r').value }) });
+    $('addMsg').textContent = `Added ${u.name}. They sign in at /login with that PIN.`;
+    $('add').reset(); load();
+  } catch (err) { $('addMsg').className = 'small msg bad'; $('addMsg').textContent = err.message; }
+};
+load().catch((e) => { $('rows').innerHTML = `<tr><td colspan="6" class="msg bad">${esc(e.message)}</td></tr>`; });
+</script>
+</body>
+</html>

@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ImpactText · Log</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="ImpactText">
+  <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
   <style>
     main { max-width: 560px; }
     .mic { width: 100%; padding: 26px 18px; font-size: 22px; border-radius: 18px; display: flex; gap: 12px; align-items: center; justify-content: center; }
@@ -24,13 +33,7 @@
 </head>
 <body>
 <main>
-  <nav>
-    <a class="brand" href="/">ImpactText</a>
-    <a class="tab" href="/" aria-current="page">Log</a>
-    <a class="tab" href="/dashboard">Dashboard</a>
-    <a class="tab" href="/report">Report</a>
-    <a class="tab" href="/phone">Text it</a>
-  </nav>
+  <nav data-nav></nav>
 
   <section id="nameStep" class="card hidden">
     <h1>Welcome 👋</h1>
@@ -39,12 +42,13 @@
       <input id="nameInput" placeholder="Your first name" autocomplete="given-name" required>
       <button>Start</button>
     </form>
+    <p class="small muted" style="margin:14px 0 0">No account needed. Want to see and fix your own notes later? <a href="/login?next=/">Sign in or make an account</a> (optional).</p>
   </section>
 
   <section id="logStep" class="hidden">
     <div class="row" style="margin-bottom:12px">
       <h1>What did you do?</h1>
-      <span class="small muted">Hi <b id="who"></b> · <a href="#" id="notMe">not you?</a></span>
+      <span class="small muted">Hi <b id="who"></b> · <a href="#" id="notMe">not you?</a><span id="mineLink" class="hidden"> · <a href="/me">My notes</a></span></span>
     </div>
 
     <button id="mic" class="mic" type="button" aria-live="polite">🎤 <span id="micLabel">Tap and talk</span></button>
@@ -55,7 +59,7 @@
 
     <p class="or muted small">or type it</p>
     <form id="logForm">
-      <textarea id="text" placeholder="Fed 20 kids at Sherman Park after school. Sent one mom to 414 LIFE, need to call her back Friday." required></textarea>
+      <textarea id="text" maxlength="2000" placeholder="Fed 20 kids at Sherman Park after school. Sent one mom to 414 LIFE, need to call her back Friday." required></textarea>
       <div class="examples" aria-label="Examples">
         <button type="button" class="ghost">Fed 25 people at the cookout on 35th &amp; Center</button>
         <button type="button" class="ghost">Shooting near Washington Park, sat with the family 3 hours, connected them to 414 LIFE</button>
@@ -73,7 +77,9 @@
       </div>
     </section>
 
-    <p class="small muted" style="margin-top:24px">No internet data? You can also <a href="/phone">text it</a> to the ComForce number. Names of people you helped are never stored.</p>
+    <section id="queued" class="card hidden" aria-live="polite" style="margin-top:16px"></section>
+
+    <p class="small muted" style="margin-top:24px">No signal? Save anyway: the note stays on this phone and is sent when you're back online. No internet data? You can also <a href="/phone">text it</a> to the ComForce number. Names of people you helped are never stored.</p>
   </section>
 </main>
 <script>
@@ -84,16 +90,30 @@ const store = {
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 let worker = store.get('worker');
-let lastId = null, lastText = '';
+let lastId = null, lastText = '', lastUndo = '';
 let channel = 'web';
+let account = null;  // signed in (optional): notes are credited to the account and show on My notes
 
 function show() {
+  if (account) worker = account;
   $('nameStep').classList.toggle('hidden', !!worker);
   $('logStep').classList.toggle('hidden', !worker);
   if (worker) $('who').textContent = worker;
+  $('notMe').textContent = account ? 'sign out' : 'not you?';
+  $('mineLink').classList.toggle('hidden', !account);
 }
+document.addEventListener('me', (ev) => {
+  const me = ev.detail;
+  account = me.signed_in && me.name !== 'Admin' ? me.name : null;
+  show();
+});
 $('nameForm').onsubmit = (e) => { e.preventDefault(); worker = $('nameInput').value.trim(); if (worker) { store.set('worker', worker); show(); } };
-$('notMe').onclick = (e) => { e.preventDefault(); store.del('worker'); worker = null; show(); };
+$('notMe').onclick = async (e) => {
+  e.preventDefault();
+  if (account) { await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {}); account = null; store.del('worker'); location.reload(); return; }
+  store.del('worker'); worker = null; show();
+};
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2, 10)).replace(/[^A-Za-z0-9_-]/g, '');
 document.querySelectorAll('.examples button').forEach((b) => b.onclick = () => { $('text').value = b.textContent; channel = 'web'; });
 $('lang').value = store.get('lang') || 'en-US';
 $('lang').onchange = () => store.set('lang', $('lang').value);
@@ -117,12 +137,14 @@ $('logForm').onsubmit = async (e) => {
   e.preventDefault();
   if (rec) rec.stop();
   const text = $('text').value.trim(); if (text.length < 3) return;
+  const client_id = newId();  // same id if this note is resent later, so it can't count twice
+  if (navigator.onLine === false) { enqueue(text, client_id); return; }
   $('save').disabled = true; $('save').textContent = 'Saving…';
   try {
-    const r = await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, worker, channel }) });
+    const r = await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, worker, channel, client_id }) });
     if (!r.ok) throw new Error(r.status);
-    const { entry } = await r.json();
-    lastId = entry.id; lastText = text;
+    const { entry, undo_token } = await r.json();
+    lastId = entry.id; lastText = text; lastUndo = undo_token;
     $('doneText').textContent = entry.summary;
     $('fields').innerHTML = '';
     for (const [k, label] of Object.entries(LABEL)) {
@@ -137,18 +159,78 @@ $('logForm').onsubmit = async (e) => {
     $('done').classList.remove('hidden');
     $('text').value = ''; channel = 'web';
   } catch (err) {
-    alert('Could not save. Check your connection and try again. Your note is still in the box.');
+    if (err instanceof TypeError) {  // no connection: keep it on the phone instead of losing it
+      enqueue(text, client_id);
+    } else {
+      alert('Could not save (' + err.message + '). Your note is still in the box.');
+    }
   } finally {
     $('save').disabled = false; $('save').textContent = 'Save';
   }
 };
 $('undo').onclick = async () => {
   if (!lastId) return;
-  await fetch('/api/entries/' + lastId, { method: 'DELETE' });
-  $('done').classList.add('hidden'); lastId = null;
-  $('text').value = lastText; $('text').focus();
+  $('undo').disabled = true;
+  try {
+    const r = await fetch('/api/entries/' + lastId, { method: 'DELETE', headers: { 'X-Undo-Token': lastUndo } });
+    if (!r.ok && r.status !== 404) { alert("Couldn't undo that one. Ask an admin to remove it."); return; }
+    $('done').classList.add('hidden'); lastId = null;
+    $('text').value = lastText; $('text').focus();
+  } catch { alert('No connection, so it could not be undone yet. Try again in a moment.'); }
+  finally { $('undo').disabled = false; }
 };
+// --- offline: notes saved with no signal wait on this phone and go out when it's back online
+const QKEY = 'impacttext-queue';
+const queue = {
+  all() { try { return JSON.parse(localStorage.getItem(QKEY)) || []; } catch { return []; } },
+  save(q) { try { localStorage.setItem(QKEY, JSON.stringify(q)); return true; } catch { return false; } },
+};
+const today = () => new Date().toLocaleDateString('en-CA');  // YYYY-MM-DD on the phone's own calendar
+function enqueue(text, client_id) {
+  const q = queue.all();
+  q.push({ qid: client_id, client_id, text: text.slice(0, 2000), worker, channel, logged_on: today() });
+  if (!queue.save(q)) { alert("No signal, and this browser won't let us keep the note. Copy it somewhere and try later."); return; }
+  $('text').value = ''; channel = 'web';
+  $('done').classList.add('hidden');
+  renderQueue();
+}
+function renderQueue(sent = 0) {
+  const n = queue.all().length, el = $('queued');
+  if (!n && !sent) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.innerHTML = n
+    ? `<b>📶 ${n} note${n === 1 ? '' : 's'} waiting for signal.</b> <span class="small muted">Saved on this phone. They send by themselves when you're back online.</span> <button class="ghost" type="button" id="retry" style="margin-top:8px;padding:6px 12px;font-size:14px">Try now</button>`
+    : `<b style="color:var(--ok)">✓ Sent ${sent} saved note${sent === 1 ? '' : 's'}.</b> <span class="small muted">Check them on the dashboard.</span>`;
+  const b = document.getElementById('retry'); if (b) b.onclick = flush;
+}
+let flushing = false;
+async function flush() {
+  if (flushing || !queue.all().length) return;
+  flushing = true;
+  let sent = 0;
+  try {
+    for (const item of queue.all()) {
+      const { qid, ...body } = item;
+      const r = await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok && r.status !== 422) break;  // server trouble: keep it and try later. 422 = the note itself is invalid: drop it
+      queue.save(queue.all().filter((x) => x.qid !== qid));
+      sent += r.ok;
+    }
+  } catch { /* still offline */ }
+  flushing = false;
+  renderQueue(sent);
+}
+window.addEventListener('online', flush);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) flush(); });
+
+// --- Android "Share" to ImpactText (manifest share_target) and links like /?text=...
+const params = new URLSearchParams(location.search);
+const shared = [params.get('title'), params.get('text'), params.get('url')].filter(Boolean).join(' ').trim();
+if (shared) { $('text').value = shared.slice(0, 2000); history.replaceState(null, '', '/'); }
+
 show();
+renderQueue();
+flush();
 </script>
 </body>
 </html>

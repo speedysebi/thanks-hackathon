@@ -82,3 +82,8 @@ if __name__ == "__main__":
     out.write_text(json.dumps([{k: v for k, v in r.items() if k != "misses"} for r in results], indent=2))
     print()
     print(f"Saved {out}")
+    if "--min" in sys.argv:  # CI gate: fail if any set drops below this field accuracy
+        floor = float(sys.argv[sys.argv.index("--min") + 1])
+        low = [f"{r['name']}: {r['field_accuracy']}%" for r in results if r["field_accuracy"] < floor]
+        print(f"Below {floor}%: {', '.join(low)}" if low else f"All sets at or above {floor}%.")
+        sys.exit(1 if low else 0)

@@ -17,6 +17,6 @@ Audience: ComForce leadership (non-technical) + MSOE AI faculty.
 
 **3:00 Why trust it (30s).** Phone numbers, addresses and names like "Ms. Johnson" are scrubbed before anything is stored, and the AI summary removes other names. Double-sent texts count once. The AI fills fields; every report number comes from the database. Sensitive entries stay out of stories. If the AI goes down, notes still save. ComForce owns the data: one file + CSV export.
 
-**3:30 Adopt it Monday (30s).** One small server + one phone number, about $10/month. Nothing to train: "just text what you did." Next: PIN login, Spanish replies, monthly report emailed automatically.
+**3:30 Adopt it Monday (30s).** One small server + one phone number, about $10/month. Nothing to train: "just text what you did." Workers don't need an account; admins sign in to see everything. Next: Spanish replies, monthly report emailed automatically.
 
 Backup: screen-record the demo Saturday night.

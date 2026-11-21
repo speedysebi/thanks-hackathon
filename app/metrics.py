@@ -1,23 +1,28 @@
-"""Logs every request to data/events.jsonl so we can show real numbers at finals."""
+"""Logs every request to events.jsonl next to the database so we can show real numbers at finals."""
 import json
 import time
 from pathlib import Path
 from statistics import mean
 
-LOG = Path(__file__).resolve().parent.parent / "data" / "events.jsonl"
+from app import db
+
+def _log() -> Path:
+    return Path(db.DB_PATH).parent / "events.jsonl"  # same folder as the database (a mounted disk when hosted)
 
 
 def record(event: str, latency_ms: float, ok: bool = True, **extra) -> None:
-    LOG.parent.mkdir(exist_ok=True)
+    log = _log()
+    log.parent.mkdir(parents=True, exist_ok=True)
     row = {"t": time.time(), "event": event, "latency_ms": round(latency_ms, 1), "ok": ok, **extra}
-    with LOG.open("a", encoding="utf-8") as f:
+    with log.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row) + "\n")
 
 
 def summary() -> dict:
-    if not LOG.exists():
+    log = _log()
+    if not log.exists():
         return {"requests": 0}
-    rows = [json.loads(line) for line in LOG.read_text(encoding="utf-8").splitlines() if line]
+    rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines() if line]
     if not rows:
         return {"requests": 0}
     lat = sorted(r["latency_ms"] for r in rows if r["event"] == "log") or [0]

@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImpactText · Two-step sign-in</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#b4232f">
+  <link rel="icon" href="/static/icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <script src="/static/pwa.js" defer></script>
+  <script src="/static/nav.js" defer></script>
+  <style>
+    main { max-width: 520px; }
+    ol { padding-left: 20px; margin: 0 0 14px; } ol li { margin: 6px 0; }
+    .qr { background: #fff; border-radius: 12px; padding: 10px; width: 210px; max-width: 100%; margin: 6px auto 10px; }
+    .qr svg { width: 100%; height: auto; display: block; }
+    .key { font-family: ui-monospace, Consolas, monospace; font-size: 15px; word-break: break-all; background: var(--track); padding: 8px 10px; border-radius: 8px; user-select: all; }
+    .codes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; font-family: ui-monospace, Consolas, monospace; font-size: 16px; background: var(--track); padding: 12px; border-radius: 10px; margin: 8px 0 12px; }
+    input.code { font-size: 22px; letter-spacing: 4px; text-align: center; font-variant-numeric: tabular-nums; }
+    .msg { margin: 8px 0 0; } .msg:empty { display: none; } .msg.bad { color: var(--accent); }
+    .warnbox { background: var(--warn-bg); color: var(--warn); padding: 10px 12px; border-radius: 10px; font-size: 14px; margin-bottom: 14px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .row > * { flex: 1 1 160px; }
+    details summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <nav data-nav></nav>
+  <section class="card" id="out" hidden>
+    <h1 style="margin-bottom:6px">Two-step sign-in</h1>
+    <p class="small muted" style="margin:0">Sign in first, then come back here.</p>
+    <p style="margin:14px 0 0"><a class="btn" href="/login?next=/security">Sign in</a></p>
+  </section>
+
+  <section class="card" id="card" hidden>
+    <h1 style="margin-bottom:6px">Two-step sign-in</h1>
+    <div id="required" class="warnbox hidden"><b>Admins need this.</b> Your password was right. Set up a code app on your phone to open the admin pages. It takes about a minute.</div>
+    <p class="small muted" id="why" style="margin:0 0 14px">After your PIN, you'll also type a 6-digit code from an app on your phone. Someone who learns your PIN still can't get in. Optional for everyone except admins.</p>
+
+    <!-- off: start setup -->
+    <div id="off" hidden>
+      <p style="margin:0 0 12px"><span class="pill">Off</span></p>
+      <button id="start">Turn on two-step sign-in</button>
+    </div>
+
+    <!-- setting up -->
+    <div id="setup" hidden>
+      <ol>
+        <li>On your phone, open an authenticator app: <b>Google Authenticator</b>, <b>Microsoft Authenticator</b>, Authy, 1Password, or the iPhone <b>Passwords</b> app. They're free.</li>
+        <li>Tap <b>+</b> and scan this code.</li>
+      </ol>
+      <div class="qr" id="qr"></div>
+      <details style="margin-bottom:12px"><summary>Can't scan? Type this key instead</summary>
+        <p class="key" id="key" style="margin:8px 0 0"></p>
+        <p class="small muted" style="margin:6px 0 0"><a id="uri" href="#">Open in an authenticator app on this phone</a></p>
+      </details>
+      <form id="enable" class="grid">
+        <label>3. Type the 6-digit code it shows
+          <input id="code1" class="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" required placeholder="123456"></label>
+        <button>Turn it on</button>
+      </form>
+      <p class="small msg" id="msg1" aria-live="polite"></p>
+    </div>
+
+    <!-- just turned on: backup codes -->
+    <div id="backup" hidden>
+      <p style="margin:0 0 6px"><span class="pill ok">On</span></p>
+      <h2 style="margin:10px 0 0">Save your backup codes</h2>
+      <p class="small muted" style="margin:4px 0 0">If you lose your phone, each of these works once instead of a code. Write them down or take a screenshot, and keep them somewhere safe. You won't see them again.</p>
+      <div class="codes" id="codes"></div>
+      <div class="row"><button type="button" class="ghost" id="copy">Copy codes</button><button type="button" id="continue">I saved them, continue</button></div>
+    </div>
+
+    <!-- on -->
+    <div id="on" hidden>
+      <p style="margin:0 0 8px"><span class="pill ok">On</span> <span class="small muted" id="left"></span></p>
+      <p class="small muted hidden" id="envnote" style="margin:0 0 10px">Set by <code>ADMIN_TOTP_SECRET</code> in the server's .env.</p>
+      <form id="manage" class="grid">
+        <label>Code from your app <input id="code2" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required placeholder="123456"></label>
+        <div class="row">
+          <button type="button" class="ghost" id="newcodes">New backup codes</button>
+          <button type="button" class="ghost" id="disable">Turn off</button>
+        </div>
+      </form>
+      <p class="small msg" id="msg2" aria-live="polite"></p>
+      <p class="small muted hidden" id="adminkeep" style="margin:10px 0 0">Admins can't turn it off. New phone? Ask another admin to press <b>Reset 2-step</b> on Team, then set it up again.</p>
+    </div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const show = (id) => ['off', 'setup', 'backup', 'on'].forEach((x) => { $(x).hidden = x !== id; });
+const params = new URLSearchParams(location.search);
+const raw = params.get('next') || '';
+const next = /^\/(?![\/\\])/.test(raw) ? raw : '';
+async function api(path, body) {
+  const r = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: body === undefined ? undefined : JSON.stringify(body) });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof out.detail === 'string' ? out.detail : r.status === 422 ? 'Type the 6-digit code.' : 'HTTP ' + r.status);
+  return out;
+}
+const say = (id, text, bad) => { $(id).className = 'small msg' + (bad ? ' bad' : ''); $(id).textContent = text; };
+
+async function load() {
+  let s;
+  try { s = await api('/api/auth/2fa'); } catch { $('out').hidden = false; return; }
+  $('card').hidden = false;
+  $('required').classList.toggle('hidden', !(s.required && !s.enabled));
+  $('why').classList.toggle('hidden', s.required && !s.enabled);
+  $('adminkeep').classList.toggle('hidden', !s.required);
+  $('disable').classList.toggle('hidden', s.required);
+  $('envnote').classList.toggle('hidden', !s.set_in_env);
+  $('newcodes').classList.toggle('hidden', s.set_in_env);
+  $('manage').classList.toggle('hidden', s.set_in_env);  // nothing to manage here: it lives in .env
+  if (s.builtin_admin) $('adminkeep').innerHTML = s.set_in_env
+    ? 'To change it, edit <code>ADMIN_TOTP_SECRET</code> in .env and restart.'
+    : 'Admins can\'t turn it off. New phone? On the server run <code>python -m app.mfa reset admin</code>, then sign in and set it up again.';
+  $('left').textContent = s.set_in_env ? '' : `${s.backup_codes_left} backup code${s.backup_codes_left === 1 ? '' : 's'} left`;
+  if (s.enabled) show('on'); else if (s.required) start(); else show('off');
+}
+
+async function start() {
+  try {
+    const s = await api('/api/auth/2fa/start', {});
+    $('qr').innerHTML = s.qr_svg || '<p class="small muted">Use the key below.</p>';
+    $('key').textContent = s.secret; $('uri').href = s.uri;
+    show('setup'); $('code1').focus();
+  } catch (e) { show('off'); alert(e.message); }
+}
+$('start').onclick = start;
+
+$('enable').onsubmit = async (e) => {
+  e.preventDefault(); say('msg1', 'Checking…');
+  try {
+    const r = await api('/api/auth/2fa/enable', { code: $('code1').value });
+    showCodes(r.backup_codes);
+  } catch (err) { say('msg1', err.message, true); }
+};
+function showCodes(codes) {
+  $('codes').innerHTML = codes.map((c) => `<span>${c}</span>`).join('');
+  $('copy').onclick = () => navigator.clipboard?.writeText('ImpactText backup codes\n' + codes.join('\n')).then(() => { $('copy').textContent = 'Copied'; });
+  show('backup');
+}
+$('continue').onclick = () => {
+  if (next) location.href = next;
+  else fetch('/api/auth/me', { cache: 'no-store' }).then((r) => r.json()).then((me) => { location.href = me.admin ? '/dashboard' : '/me'; });
+};
+$('newcodes').onclick = async () => {
+  try { const r = await api('/api/auth/2fa/backup-codes', { code: $('code2').value }); showCodes(r.backup_codes); }
+  catch (err) { say('msg2', err.message, true); }
+};
+$('disable').onclick = async () => {
+  if (!confirm('Turn off two-step sign-in? Your PIN alone will be enough to sign in.')) return;
+  try { await api('/api/auth/2fa/disable', { code: $('code2').value }); $('code2').value = ''; say('msg2', ''); load(); }
+  catch (err) { say('msg2', err.message, true); }
+};
+load();
+</script>
+</body>
+</html>

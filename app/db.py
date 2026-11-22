@@ -49,6 +49,20 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     last_login TEXT
 );
+-- Monthly completion records and claims serialize automatic send attempts.
+CREATE TABLE IF NOT EXISTS report_sends (
+    month      TEXT PRIMARY KEY,            -- YYYY-MM the report covers
+    claimed_at TEXT,                        -- when a server started sending it
+    sent_at    TEXT,                        -- NULL while being sent
+    sent_to    TEXT NOT NULL DEFAULT ''
+);
+-- Keep accepted recipients even when a partial failure releases the month's send claim.
+CREATE TABLE IF NOT EXISTS report_deliveries (
+    month     TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    sent_at   TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    PRIMARY KEY (month, recipient)
+);
 -- reply language a phone asked for (ESPANOL / ENGLISH). No row = follow the language of each text.
 CREATE TABLE IF NOT EXISTS sms_lang (
     phone TEXT PRIMARY KEY,
@@ -352,6 +366,47 @@ def set_worker_name(phone: str, name: str) -> None:
             "ON CONFLICT(phone) DO UPDATE SET name = excluded.name",
             (phone, name),
         )
+
+
+# ---------- monthly report emails ----------
+def claim_report_send(month: str) -> bool:
+    """True for exactly one caller per month. A claim left unsent for over an hour (crash mid-send) can be retaken."""
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute("INSERT OR IGNORE INTO report_sends (month, claimed_at) VALUES (?, datetime('now','localtime'))",
+                        (month,)).rowcount:
+            return True
+        return conn.execute("UPDATE report_sends SET claimed_at = datetime('now','localtime') WHERE month = ? "
+                            "AND sent_at IS NULL AND claimed_at < datetime('now','localtime','-1 hour')",
+                            (month,)).rowcount == 1
+
+
+def release_report_send(month: str) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM report_sends WHERE month = ? AND sent_at IS NULL", (month,))
+
+
+def mark_report_sent(month: str, to: str) -> None:
+    with connect() as conn:
+        conn.execute("INSERT INTO report_sends (month) VALUES (?) ON CONFLICT(month) DO NOTHING", (month,))
+        conn.execute("UPDATE report_sends SET sent_at = datetime('now','localtime'), sent_to = ? WHERE month = ?", (to, month))
+
+
+def report_recipients_sent(month: str) -> set[str]:
+    with connect() as conn:
+        return {r["recipient"] for r in conn.execute(
+            "SELECT recipient FROM report_deliveries WHERE month = ?", (month,))}
+
+
+def mark_report_recipients_sent(month: str, recipients: list[str]) -> None:
+    with connect() as conn:
+        conn.executemany("INSERT OR IGNORE INTO report_deliveries (month, recipient) VALUES (?, ?)",
+                         [(month, recipient) for recipient in recipients])
+
+
+def report_sends() -> list[dict]:
+    with connect() as conn:
+        return [dict(r) for r in conn.execute("SELECT * FROM report_sends WHERE sent_at IS NOT NULL ORDER BY month DESC LIMIT 12")]
 
 
 # ---------- linking a texting phone to an account ----------

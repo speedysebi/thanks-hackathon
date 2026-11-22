@@ -26,6 +26,7 @@
     .foot { margin-top: 26px; font-size: 13px; }
     @media (max-width: 520px) { .paper { padding: 18px; } }
     @media print {
+      #mail, #mailNote { display: none !important; }
       nav, .controls { display: none !important; }
       body { background: #fff; color: #000; }
       .paper { border: 0; padding: 0; }
@@ -43,7 +44,9 @@
     </select>
     <button id="regen" class="ghost">↻ Rewrite</button>
     <button id="print">🖨 Print / Save PDF</button>
+    <button id="mail" class="ghost hidden">✉ Email last month's report</button>
   </div>
+  <p class="small muted hidden" id="mailNote" role="status"></p>
   <article class="paper" id="paper"><p class="muted">Writing your report…</p></article>
 </main>
 <script>
@@ -83,7 +86,26 @@ async function load() {
 $('days').onchange = () => { history.replaceState(null, '', '?days=' + $('days').value); load(); };
 $('regen').onclick = load;
 $('print').onclick = () => window.print();
+async function mailStatus() {
+  const r = await fetch('/api/report/email'); if (!r.ok) return;
+  const st = await r.json();
+  if (!st.configured) return;  // the button only shows once SMTP_HOST and REPORT_TO are set
+  $('mail').classList.remove('hidden'); $('mailNote').classList.remove('hidden');
+  const last = st.sent[0];
+  $('mailNote').textContent = `Each month's report is emailed to ${st.to.join(', ')} in the first week of the next month.`
+    + (last ? ` Last sent: ${last.month} on ${last.sent_at.slice(0, 10)}.` : '');
+}
+$('mail').onclick = async () => {
+  if (!confirm("Email last month's report now?")) return;
+  $('mail').disabled = true;
+  const r = await fetch('/api/report/email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  const j = await r.json().catch(() => ({}));
+  $('mail').disabled = false;
+  if (!r.ok) { $('mailNote').textContent = j.detail || 'Not sent (' + r.status + ').'; return; }
+  $('mailNote').textContent = 'Sent to ' + j.to.join(', ') + '.'; mailStatus();
+};
 load();
+mailStatus();
 </script>
 </body>
 </html>

@@ -22,6 +22,8 @@ SMS commands: just text what you did · `NAME Dee` · `UNDO` · `ME` (your total
 ## What's on the dashboard
 People and youth served, referrals, hours, resolved rate · people served per week · all open follow-ups, oldest due first (one tap to mark done; independent of the chart period) · by activity, neighborhood, referral partner and worker · recent entries · **Export CSV** · **Make grant report** (printable, Save as PDF).
 
+**Monthly report by email:** set `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` and `REPORT_TO` (any mail account with SMTP, e.g. Gmail with an app password, so it's free) and in the first week of each month the server emails last month's report to ComForce, once. Admins can also press **✉ Email last month's report** on `/report`, or run `python -m app.monthly_report [--month 2026-10] [--send]`. The email has the same report as `/report`. No raw notes or phone numbers go out.
+
 ## Run it (2 minutes)
 ```powershell
 python -m venv .venv; .\.venv\Scripts\Activate.ps1

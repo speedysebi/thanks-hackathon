@@ -39,7 +39,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app import auth, console, db, extract, impact, integrations, llm, metrics, privacy, sms_text
+from app import auth, console, db, extract, impact, integrations, llm, metrics, monthly_report, privacy, sms_text
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = FastAPI(title="ImpactText")
@@ -78,6 +78,11 @@ async def require_admin(request: Request, call_next):
         return JSONResponse({"detail": "Admins only." if signed_in else "Sign in as an admin."},
                             status_code=403 if signed_in else 401)
     return await call_next(request)
+
+
+@app.on_event("startup")
+def schedule_monthly_report():
+    monthly_report.start_scheduler()  # does nothing unless SMTP_HOST and REPORT_TO are set
 
 
 @app.on_event("startup")
@@ -403,6 +408,32 @@ def api_report(days: int = 30):
     r = impact.report(s, entries)
     metrics.record("report", (time.perf_counter() - start) * 1000, ok=True, writer=r["writer"])
     return {"summary": s, **r}
+
+
+@app.get("/api/report/email")
+def report_email_status():
+    """Admins: is the monthly email set up, where does it go, and what was sent."""
+    to = [a.strip() for a in os.getenv("REPORT_TO", "").split(",") if a.strip()]
+    return {"configured": monthly_report.configured(), "to": to, "next_month": monthly_report.last_month(),
+            "sent": db.report_sends()}
+
+
+class ReportEmail(BaseModel):
+    month: str | None = Field(default=None, pattern=r"^20\d\d-(0[1-9]|1[0-2])$")
+
+
+@app.post("/api/report/email")
+def report_email_send(body: ReportEmail):
+    """Admins: email a month's report now (default: last month). Sends even if that month went out already."""
+    if not monthly_report.configured():
+        raise HTTPException(400, "Email isn't set up. Add SMTP_HOST, SMTP_USER, SMTP_PASSWORD and REPORT_TO.")
+    month = body.month or monthly_report.last_month()
+    try:
+        out = monthly_report.send(month)
+    except Exception as e:
+        raise HTTPException(502, f"The mail server said no: {type(e).__name__}") from e
+    db.mark_report_sent(month, ", ".join(out["to"]))
+    return out
 
 
 @app.get("/api/export.csv")

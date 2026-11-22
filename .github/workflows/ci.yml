@@ -43,6 +43,8 @@ jobs:
         run: python -m eval.robustness
       - name: Follow-ups, safe edits and simultaneous retries
         run: python -m eval.data_correctness_test
+      - name: Monthly report email (fake mail server)
+        run: python -m eval.monthly_report_test
       - name: Linking a texting phone to an account
         run: python -m eval.link_phone_test
       - name: Spanish text replies

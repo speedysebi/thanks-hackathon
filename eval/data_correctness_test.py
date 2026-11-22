@@ -123,6 +123,42 @@ class DataCorrectnessTests(unittest.TestCase):
         saved = db.get(entry["id"])
         self.assertLessEqual(saved["youth_served"], saved["people_served"])
 
+    def test_edit_form_fields_all_save(self):
+        """Everything the "Fix" form on My notes and the dashboard sends, in one PATCH."""
+        entry = self.entry()
+        form = {"summary": "Fed 12 families", "activity_type": "food_meals", "outcome": "needs_follow_up",
+                "people_served": 12, "youth_served": 5, "neighborhood": "Sherman Park", "follow_up": "Call back Friday",
+                "hours": 2.5, "activity_date": (date.today() - timedelta(days=1)).isoformat()}
+        r = self.client.patch(f"/api/entries/{entry['id']}", json=form)
+        self.assertEqual(r.status_code, 200, r.text)
+        saved = db.get(entry["id"])
+        for k, v in form.items():
+            self.assertEqual(saved[k], v, k)
+
+    def test_edit_form_rejects_future_day(self):
+        entry = self.entry()
+        r = self.client.patch(f"/api/entries/{entry['id']}",
+                              json={"activity_date": (date.today() + timedelta(days=5)).isoformat()})
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(db.get(entry["id"]), entry)
+
+    def test_edit_form_choices_match_server(self):
+        import re
+        js = (Path(__file__).resolve().parent.parent / "static" / "edit.js").read_text(encoding="utf-8")
+        types = re.search(r"const TYPES = \{(.*?)\};", js, re.S).group(1)
+        outcomes = re.search(r"const OUTCOMES = \{(.*?)\};", js, re.S).group(1)
+        self.assertEqual(re.findall(r"(\w+): '", types), extract.ACTIVITY_TYPES)
+        self.assertEqual(re.findall(r"(\w+): '", outcomes), extract.OUTCOMES)
+
+    def test_owner_can_fix_own_note_but_not_someone_elses(self):
+        uid = db.create_user("Dee", auth.hash_pin("4821"))["id"]
+        mine, theirs = self.entry(user_id=uid), self.entry()
+        with TestClient(app) as dee:
+            dee.cookies.set(auth.COOKIE, auth.make_session(uid, 1))
+            self.assertEqual(dee.patch(f"/api/entries/{mine['id']}", json={"people_served": 11}).status_code, 200)
+            self.assertEqual(dee.patch(f"/api/entries/{theirs['id']}", json={"people_served": 11}).status_code, 403)
+        self.assertEqual(db.get(theirs["id"]), theirs)
+
     def test_unauthorized_edits_still_rejected(self):
         entry = self.entry()
         with TestClient(app) as anon:

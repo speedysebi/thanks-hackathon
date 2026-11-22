@@ -14,6 +14,7 @@
   <meta name="apple-mobile-web-app-title" content="ImpactText">
   <script src="/static/pwa.js" defer></script>
   <script src="/static/nav.js" defer></script>
+  <script src="/static/edit.js" defer></script>
   <style>
     .head { display: flex; gap: 12px; align-items: end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
     .tiles { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
@@ -44,6 +45,7 @@
     .cal .overdue { color: var(--accent); font-weight: 600; }
     .cal .menu a:hover, .cal .menu a:focus { background: var(--track); }
     .table-wrap { overflow-x: auto; }
+    button.fix { padding: 2px 10px; font-size: 13px; margin-top: 4px; }  /* first column, so it's on screen on phones */
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
     th { color: var(--muted); font-weight: 500; border-top: 0; }
@@ -160,14 +162,19 @@ async function load() {
     load();
   });
 
+  recent = Object.fromEntries(entries.map((e) => [e.id, e]));
   const statusPill = (o) => o === 'needs_follow_up' ? '<span class="pill warn">follow up</span>' : o === 'resolved' ? '<span class="pill ok">resolved</span>' : `<span class="pill">${nice(o)}</span>`;
   $('rows').innerHTML = entries.length ? entries.slice(0, 40).map((e) => `
-    <tr><td>${esc(e.activity_date)}</td><td>${esc(e.worker)}<div class="small muted">${esc(e.channel)}</div></td>
+    <tr><td>${esc(e.activity_date)}<div><button class="ghost fix" data-edit="${e.id}" aria-label="Fix entry ${e.id}">Fix</button></div></td><td>${esc(e.worker)}<div class="small muted">${esc(e.channel)}</div></td>
       <td>${esc(e.summary)}${e.referred_to.length ? `<div class="small muted">→ ${esc(e.referred_to.join(', '))}</div>` : ''}</td>
       <td>${nice(e.activity_type)}</td><td class="num">${fmt(e.people_served)}</td><td>${statusPill(e.outcome)}</td></tr>`).join('')
     : '<tr><td colspan="6" class="empty muted">No entries yet. <a href="/">Log the first one</a>.</td></tr>';
 }
 $('days').onchange = load;
+let recent = {};
+$('rows').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-edit]'); if (b) window.editEntry(recent[b.dataset.edit], load);
+});
 load();
 document.addEventListener('click', (ev) => document.querySelectorAll('details.cal[open]').forEach((d) => { if (!d.contains(ev.target)) d.open = false; }));
 </script>

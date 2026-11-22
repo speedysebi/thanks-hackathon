@@ -11,6 +11,7 @@
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
   <script src="/static/pwa.js" defer></script>
   <script src="/static/nav.js" defer></script>
+  <script src="/static/edit.js" defer></script>
   <style>
     main { max-width: 640px; }
     .head { display: flex; gap: 10px; align-items: end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
@@ -51,11 +52,13 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n) => Number(n).toLocaleString();
+let byId = {};
 
 async function load() {
   const r = await fetch('/api/my/entries?days=' + $('days').value);
   if (r.status === 401) { $('signedOut').classList.remove('hidden'); $('signedIn').classList.add('hidden'); return; }
   const { name, entries, totals } = await r.json();
+  byId = Object.fromEntries(entries.map((e) => [e.id, e]));
   $('signedOut').classList.add('hidden'); $('signedIn').classList.remove('hidden');
   $('name').textContent = name;
   $('tiles').innerHTML = [['People helped', totals.people], ['Youth', totals.youth], ['Activities', totals.activities], ['Hours', totals.hours]]
@@ -69,10 +72,12 @@ async function load() {
 function row(e, fu) {
   const meta = [e.activity_date, e.activity_type.replaceAll('_', ' '), e.people_served ? `${e.people_served} people` : '', e.neighborhood].filter(Boolean).join(' · ');
   return `<div class="note"><div class="top"><div>${esc(fu ? (e.follow_up || e.summary) : e.summary)}</div>
-    <div class="acts">${fu ? `<button class="ghost" data-done="${e.id}">✓ Done</button>` : `<button class="ghost" data-del="${e.id}" aria-label="Remove note ${e.id}">Remove</button>`}</div></div>
+    <div class="acts"><button class="ghost" data-edit="${e.id}" aria-label="Fix note ${e.id}">Fix</button>${fu ? `<button class="ghost" data-done="${e.id}">✓ Done</button>` : `<button class="ghost" data-del="${e.id}" aria-label="Remove note ${e.id}">Remove</button>`}</div></div>
     <div class="small muted">${esc(meta)}</div></div>`;
 }
 document.addEventListener('click', async (ev) => {
+  const ed = ev.target.closest('button[data-edit]');
+  if (ed) { window.editEntry(byId[ed.dataset.edit], load); return; }
   const b = ev.target.closest('button[data-done], button[data-del]'); if (!b) return;
   if (b.dataset.del && !confirm('Remove this note? It will no longer count in ComForce\'s totals.')) return;
   b.disabled = true;

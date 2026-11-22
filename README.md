@@ -70,7 +70,7 @@ Every page, command and safeguard is described in **[docs/FEATURES.md](docs/FEAT
 GitHub Actions runs all of this, plus a Docker build and smoke test, on every pull request.
 
 ## What it costs to run
-About **$10/month** for one nonprofit: a small server with a disk (~$7), a Twilio number and texts (a few dollars), and AI reading of ~300 notes (~$2.50 on Claude Opus 5.5, ~$0.10 on Haiku 5.5). A demo runs at $0: no AI key, the `/phone` simulator, and `render.free.yaml`. Check current prices.
+About **$10/month** for one nonprofit: a small server with a disk (~$7), a Twilio number and texts (a few dollars), and AI reading of ~300 notes (~$2.50 on Claude Opus 5.5, ~$0.10 on Haiku 5.5). Running it locally for a demo costs $0: no AI key needed, and `/phone` stands in for real texts. Check current prices.
 
 ## Known limits / next
 - Tested on emulated phones only so far. The mic and Add to Home Screen still need a pass on real devices.
@@ -88,6 +88,6 @@ About **$10/month** for one nonprofit: a small server with a disk (~$7), a Twili
 | [docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md) · [docs/SMS_SETUP.md](docs/SMS_SETUP.md) | Putting it online for ComForce: hosting, admin setup, Twilio, email |
 | [docs/DATA_CORRECTNESS.md](docs/DATA_CORRECTNESS.md) | Follow-ups, safe edits, duplicate-proof retries |
 
-Deploy: `render.yaml` (paid plan with a disk, deploys gated by CI) or `render.free.yaml` (a $0 demo that re-seeds synthetic data on boot).
+To put it online for ComForce, use `render.yaml` (a paid plan with a disk; CI gates deploys). See the launch checklist.
 
 *Demo data is synthetic. No real ComForce records are in this repo.*

@@ -213,6 +213,7 @@ async function flush() {
       const { qid, ...body } = item;
       const r = await fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok && r.status !== 422) break;  // server trouble: keep it and try later. 422 = the note itself is invalid: drop it
+      // Read the queue again because another note may have been added while the request was in flight.
       queue.save(queue.all().filter((x) => x.qid !== qid));
       sent += r.ok;
     }

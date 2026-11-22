@@ -107,6 +107,7 @@ def read_session(cookie: str | None) -> dict | None:
     if uid == 0:
         u = {"id": 0, "name": "Admin", "role": "admin"}
     else:
+        # Resolve the role from SQLite so account removal or a role change applies to existing cookies.
         row = db.get_user(uid)
         if not row:
             return None

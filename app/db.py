@@ -382,6 +382,7 @@ def claim_report_send(month: str) -> bool:
 
 
 def release_report_send(month: str) -> None:
+    # The next scheduler check can reclaim the month and read the saved recipient deliveries.
     with connect() as conn:
         conn.execute("DELETE FROM report_sends WHERE month = ? AND sent_at IS NULL", (month,))
 
@@ -435,6 +436,7 @@ def use_link_code(code: str, phone: str) -> dict | None:
         conn.execute("INSERT INTO phone_links (phone, user_id) VALUES (?, ?) "
                      "ON CONFLICT(phone) DO UPDATE SET user_id = excluded.user_id, linked_at = datetime('now','localtime')",
                      (phone, uid))
+        # A new link backfills unclaimed texts and preserves notes already credited to another account.
         conn.execute("UPDATE entries SET user_id = ? WHERE phone = ? AND user_id IS NULL", (uid, phone))
         conn.execute("INSERT INTO workers (phone, name) VALUES (?, ?) ON CONFLICT(phone) DO UPDATE SET name = excluded.name",
                      (phone, user["name"]))

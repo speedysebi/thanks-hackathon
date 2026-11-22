@@ -1,6 +1,6 @@
 # CI/CD for ImpactText.
-#   Every push and pull request: tests -> browser (emulated phones) + docker (the image Render runs).
-#   Push to main with everything green: tell Render to deploy (needs the RENDER_DEPLOY_HOOK_URL secret).
+#   Main pushes, pull requests and manual runs: tests -> browser + Docker smoke test.
+#   Only a passing main push can request a Render deployment.
 # No API keys are used here: the AI parts fall back to the free keyword reader, so CI costs nothing.
 name: CI
 
@@ -12,6 +12,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
+  # Wait for a run to finish before pushing again when verifying each commit separately.
   cancel-in-progress: true
 
 permissions:
@@ -116,6 +117,8 @@ jobs:
 
   deploy:
     name: Deploy to Render
+    # This job can succeed without deploying when the hook secret is absent. A successful
+    # hook request confirms Render accepted it, while rollout status is tracked in Render.
     needs: [tests, browser, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

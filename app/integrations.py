@@ -150,6 +150,8 @@ def ics(events: list[dict], name: str, link: str) -> str:
              "METHOD:PUBLISH", f"X-WR-CALNAME:{_ics_text(name)}", "X-PUBLISHED-TTL:PT1H",
              "REFRESH-INTERVAL;VALUE=DURATION:PT1H"]
     for ev in events:
+        # A stable UID lets subscribers update an existing event when its follow-up changes.
+        # The exclusive end date keeps the event all-day for exactly one day.
         lines += ["BEGIN:VEVENT", f"UID:impacttext-followup-{ev['id']}@impacttext", f"DTSTAMP:{stamp}",
                   f"DTSTART;VALUE=DATE:{ev['due']:%Y%m%d}", f"DTEND;VALUE=DATE:{ev['due'] + timedelta(days=1):%Y%m%d}",
                   f"SUMMARY:{_ics_text(ev['title'])}", f"DESCRIPTION:{_ics_text(ev['details'] + chr(10) + link)}",

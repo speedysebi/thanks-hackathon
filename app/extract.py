@@ -202,6 +202,7 @@ def _clean(d: dict) -> dict:
 
 def extract(text: str) -> dict:
     """AI when available; falls back to keywords so logging never fails in the field."""
+    # Try normalization inside the AI path so malformed output also triggers the keyword fallback.
     if llm.available():
         try:
             return _clean(ai_extract(text))

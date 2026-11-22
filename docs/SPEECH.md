@@ -1,4 +1,4 @@
-# Speech: 4:00, matches the Canva deck "ImpactText Pitch" (8 slides × 30 s)
+# Speech: 4:00, matches the Canva deck "ImpactText Pitch" (9 slides; the CI/CD slide sits between 7 and 8)
 
 PURPOSE: the word-for-word speech for finals, one block per slide, plus the fixes the deck still needs.
 [Brackets] are actions, not spoken. About 65 spoken words per slide (130 per minute). If it runs long, cut, never speed up.
@@ -53,14 +53,19 @@ All examples are synthetic. Cost figures are estimates from the README (check cu
 >
 > Texting adds a few dollars a month, plus a one-time phone number registration. These are estimates; real bills depend on use.
 
-## Slide 8 · 3:30–4:00 · Next step
-> What we'd ask of ComForce: a small pilot. Agree on data handling, finish hosting and texting, test on workers' phones, then measure the AI and ask workers if it fits their day.
+## Slide 7b · 3:30–3:55 · Every change is checked automatically
+> Volunteers can't afford a broken website, so every update has to pass automated checks first.
 >
-> Every change is checked automatically on phones and desktops, so the next team can keep building safely.
+> Each change is tested for sign-in, privacy, accuracy, and text replies. Then an automated browser clicks through it like a real person would, on simulated phones and desktops, and restarts the app to make sure no saved notes are lost.
+>
+> The checks use our free keyword reader, so they cost nothing to run. Once hosting is connected, only changes that pass every check go live.
+
+## Slide 8 · 3:55–4:20 · Next step
+> What we'd ask of ComForce: a small pilot. Agree on data handling, finish hosting and texting, test on workers' phones, then measure the AI and ask workers if it fits their day.
 >
 > ImpactText helps ComForce document its work and prove its impact. Just text what you did. Thank you.
 
-**Stop at 4:00.**
+**Runs about 4:20 with the CI/CD slide. To land at 4:00, trim ~20 seconds (e.g. slide 7 down to its main number, or drop the restart detail on slide 7b).**
 
 ---
 

@@ -77,6 +77,6 @@ We tested in emulated phones (iPhone, Android, desktop: 43 checks, 90 page views
 - [ ] If Twilio is set up: text the number from a verified phone, then text `UNDO`.
 
 ## Known gaps (fine to say out loud at judging)
-- Texting isn't linked to accounts yet: texts count per phone number and don't show on My notes.
+- Texts only show on My notes after the worker links their phone (My notes → Link my phone, then text `LINK` + the code). Set `SMS_NUMBER` so the page shows which number to text.
 - One server, one SQLite file. Fine for one nonprofit's team; not built to scale out.
 - The first admin to sign in sets up 2FA by scanning a QR code. Whoever knows the password first can enroll their phone, so set the password privately and sign in right away. Or pre-load `ADMIN_TOTP_SECRET`.

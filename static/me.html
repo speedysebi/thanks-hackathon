@@ -46,6 +46,7 @@
     <div class="tiles" id="tiles"></div>
     <section class="card"><h2>Follow-ups you still owe <span class="pill" id="fuCount">0</span></h2><div id="followups"></div></section>
     <section class="card"><h2>Everything you logged</h2><div id="notes"></div></section>
+    <section class="card" id="phoneCard"><h2>Texting from your phone</h2><div id="phoneBox"></div></section>
   </div>
 </main>
 <script>
@@ -88,8 +89,33 @@ document.addEventListener('click', async (ev) => {
   if (!r.ok) alert('That did not work (' + r.status + ').');
   load();
 });
+async function loadPhone() {
+  const r = await fetch('/api/my/phone'); if (!r.ok) return;
+  const { phones } = await r.json();
+  $('phoneBox').innerHTML = phones.length
+    ? `<p class="small">Texts from your phone ending in <b>${phones.map(esc).join(', ')}</b> count as yours and show here.</p>
+       <button class="ghost" id="unlink">Stop linking texts</button>`
+    : `<p class="small muted">If you also text your notes in, link your phone so those texts show here too.</p>
+       <button class="ghost" id="link">Link my phone</button><div id="code"></div>`;
+}
+document.addEventListener('click', async (ev) => {
+  if (ev.target.id === 'link') {
+    ev.target.disabled = true;
+    const r = await fetch('/api/my/phone/code', { method: 'POST' });
+    if (!r.ok) { alert('That did not work (' + r.status + ').'); ev.target.disabled = false; return; }
+    const { code, minutes, sms_number } = await r.json();
+    $('code').innerHTML = `<p>From your phone, text <b style="font-size:22px;letter-spacing:1px">LINK ${esc(code)}</b>
+      to ${sms_number ? `<b>${esc(sms_number)}</b>` : 'the ComForce texting number'}.</p>
+      <p class="small muted">The code works once, for ${minutes} minutes. Then <a href="#" id="recheck">check again</a>.</p>`;
+  } else if (ev.target.id === 'recheck') {
+    ev.preventDefault(); await loadPhone(); load();
+  } else if (ev.target.id === 'unlink') {
+    if (!confirm('Stop counting new texts from this phone as yours? Notes already here stay.')) return;
+    await fetch('/api/my/phone', { method: 'DELETE' }); loadPhone();
+  }
+});
 $('days').onchange = load;
-load();
+load().then(loadPhone);
 </script>
 </body>
 </html>

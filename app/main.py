@@ -25,6 +25,7 @@ import hashlib
 import hmac
 import os
 import re
+import secrets
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -199,6 +200,46 @@ def my_entries(request: Request, days: int = 30):
                        "follow_ups": sum(e["outcome"] == "needs_follow_up" for e in mine)}}
 
 
+# ---------- linking a texting phone to an account (My notes) ----------
+LINK_MINUTES = 15
+
+
+def _person(request: Request) -> dict:
+    u = auth.current_user(request)
+    if not u or not u["id"]:  # the built-in admin isn't a person with a phone
+        raise HTTPException(401, "Sign in with your own account first.")
+    return u
+
+
+@app.get("/api/my/phone")
+def my_phone(request: Request):
+    u = _person(request)
+    return {"phones": db.phones_for_user(u["id"]), "sms_number": os.getenv("SMS_NUMBER", "")}
+
+
+@app.post("/api/my/phone/code")
+def my_phone_code(request: Request):
+    """A 6-digit code to text from the phone (LINK 123456). Texting it proves the phone is yours:
+    Twilio signs every real text, so nobody can send it from your number but you."""
+    u = _person(request)
+    for _ in range(20):
+        code = f"{secrets.randbelow(10**6):06d}"
+        try:
+            db.set_link_code(u["id"], code, LINK_MINUTES)
+            break
+        except db.sqlite3.IntegrityError:  # someone else holds that code right now
+            continue
+    else:
+        raise HTTPException(503, "Try again in a moment.")
+    return {"code": code, "minutes": LINK_MINUTES, "sms_number": os.getenv("SMS_NUMBER", "")}
+
+
+@app.delete("/api/my/phone")
+def my_phone_unlink(request: Request):
+    u = _person(request)
+    return {"unlinked": db.unlink_phones(u["id"])}
+
+
 class EntryPatch(BaseModel):
     activity_type: Literal[tuple(extract.ACTIVITY_TYPES)] | None = None
     outcome: Literal[tuple(extract.OUTCOMES)] | None = None
@@ -254,10 +295,11 @@ def api_delete(entry_id: int, request: Request):
 # ---------- SMS (Twilio) ----------
 # "NAME Maria" / "NAME Maria Lopez". A note that just starts with the word ("Name tags for 30 kids") is a note.
 NAME_CMD = re.compile(r"^name\s+([^\d\s][^\d]{0,40}?)\s*$", re.IGNORECASE)
+LINK_CMD = re.compile(r"^link\s*(\d{6})$", re.IGNORECASE)
 
 HELP = (
     "Text what you did, like: fed 20 kids at Sherman Park, sent a mom to 414 LIFE. "
-    "Also: NAME + your name, UNDO, ME (your totals)"
+    "Also: NAME + your name, UNDO, ME (your totals), LINK + code from My notes"
 )
 
 
@@ -293,6 +335,19 @@ async def sms(request: Request):
     name = db.worker_name(phone)
     cmd = body.upper()
 
+    linking = LINK_CMD.match(" ".join(body.split()))
+    if linking:
+        # 6 digits, 15 minutes. Wrong guesses are limited per phone and across all phones, because
+        # the simulator's fictional numbers are free to send from.
+        if auth._limited("link:" + phone) or auth._limited("link:*", 30):
+            return _twiml("Too many wrong codes. Wait 10 minutes and try again.")
+        user = db.use_link_code(linking.group(1), phone)
+        if not user:
+            auth._fail("link:" + phone)
+            auth._fail("link:*")
+            return _twiml("That code didn't work. Get a new one on My notes and text LINK + the code.")
+        return _twiml(f"Linked to {user['name'][:30]}. Your texts now show on My notes.")
+
     named = NAME_CMD.match(body)
     if named and len(named.group(1).split()) <= 3:
         new_name = named.group(1).strip()[:60]
@@ -314,11 +369,14 @@ async def sms(request: Request):
     if len(body) < 3:
         return _twiml(HELP)
 
-    entry = log_note(body, worker, "sms", phone)
+    account = db.linked_user(phone)
+    if account:
+        worker = account["name"]
+    entry = log_note(body, worker, "sms", phone, user_id=account["id"] if account else None)
     if entry.get("duplicate"):
         return _twiml(f"Already got that one (#{entry['id']}). Nothing new was added.")
     reply = extract.confirmation(entry) + " UNDO to remove."
-    if not name:
+    if not name and not account:
         reply += " Text NAME + your name for credit."
     return _twiml(reply)
 

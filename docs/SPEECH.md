@@ -54,11 +54,11 @@ All examples are synthetic. Cost figures are estimates from the README (check cu
 > Texting adds a few dollars a month, plus a one-time phone number registration. These are estimates; real bills depend on use.
 
 ## Slide 8 · 3:30–4:00 · Next step
-> We'd start with a small pilot. We'd agree on how to handle data, finish hosting and texting setup, test on workers' phones, and measure how well the AI works.
+> What we'd ask of ComForce: a small pilot. Agree on data handling, finish hosting and texting, test on workers' phones, then measure the AI and ask workers if it fits their day.
 >
-> The next team can build on ImpactText. Every proposed change runs automated checks, including phone and desktop browser tests and a check that saved notes survive a server restart.
+> Every change is checked automatically on phones and desktops, so the next team can keep building safely.
 >
-> Just text what you did. Thank you.
+> ImpactText helps ComForce document its work and prove its impact. Just text what you did. Thank you.
 
 **Stop at 4:00.**
 

@@ -199,7 +199,7 @@ class DataCorrectnessTests(unittest.TestCase):
         self.assertNotIn(entry["summary"], response.text)
 
     def test_concurrent_id_conflict_does_not_expose_another_accounts_entry(self):
-        users = [db.create_user(name, "unused-test-hash") for name in ("Dee", "Vaun")]
+        users = [db.create_user(name, "unused-test-hash") for name in ("Dee", "Jordan")]
         barrier = threading.Barrier(2)
         fields = extract._clean(extract.keyword_extract("fed 12 kids at sherman park"))
 

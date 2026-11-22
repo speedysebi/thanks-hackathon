@@ -54,7 +54,7 @@ def sign_in(c, name, pin, uid):
     return r
 
 
-anon, dee, vaun, boss = client(), client(), client(), client()
+anon, dee, jordan, boss = client(), client(), client(), client()
 HTML = {"accept": "text/html"}
 
 # --- regular person, no account ---
@@ -88,7 +88,7 @@ check("signup · 'admin' not allowed", client().post("/api/auth/signup", json={"
 check("signup · short PIN refused", client().post("/api/auth/signup", json={"name": "Shorty", "pin": "12"}).status_code == 422)
 check("signup · weak 4-letter password refused", client().post("/api/auth/signup", json={"name": "Letters", "pin": "abcd"}).status_code == 422)
 check("signup · PIN not stored", "4141" not in db.user_by_name("Dee")["pin_hash"])
-vaun.post("/api/auth/signup", json={"name": "Vaun", "pin": "246810"})
+jordan.post("/api/auth/signup", json={"name": "Jordan", "pin": "246810"})
 me = dee.get("/api/auth/me").json()
 check("me · signed in as worker", me == {"signed_in": True, "name": "Dee", "role": "worker", "admin": False, "mfa": False, "needs_2fa": False}, me)
 
@@ -96,10 +96,10 @@ e = dee.post("/api/log", json={"text": "sent a mom to 414 life, call her back fr
 check("account · note credited to the account, not the typed name", e["worker"] == "Dee" and e["user_id"] is not None)
 mine = dee.get("/api/my/entries").json()
 check("account · My notes shows it", [x["id"] for x in mine["entries"]] == [e["id"]] and mine["totals"]["follow_ups"] == 1, mine["totals"])
-check("account · others' notes not in My notes", vaun.get("/api/my/entries").json()["entries"] == [])
+check("account · others' notes not in My notes", jordan.get("/api/my/entries").json()["entries"] == [])
 check("account · can mark own follow-up done", dee.patch(f"/api/entries/{e['id']}", json={"outcome": "resolved"}).json()["outcome"] == "resolved")
-check("account · can't change someone else's note", vaun.patch(f"/api/entries/{e['id']}", json={"outcome": "unknown"}).status_code == 403)
-check("account · can't delete someone else's note", vaun.delete(f"/api/entries/{e['id']}").status_code == 403)
+check("account · can't change someone else's note", jordan.patch(f"/api/entries/{e['id']}", json={"outcome": "unknown"}).status_code == 403)
+check("account · can't delete someone else's note", jordan.delete(f"/api/entries/{e['id']}").status_code == 403)
 check("account · can't delete a walk-in's note", dee.delete(f"/api/entries/{walkin['entry']['id']}").status_code == 403)
 check("account · worker can't open the dashboard", dee.get("/dashboard", headers=HTML, follow_redirects=False).status_code == 303)
 check("account · worker can't read everyone's notes", dee.get("/api/entries").status_code == 403)
@@ -113,15 +113,15 @@ check("login · name is case-insensitive", x.post("/api/auth/login", json={"name
 x.post("/api/auth/logout")
 check("logout · signed out", x.get("/api/auth/me").json()["signed_in"] is False)
 g = client()
-codes = [g.post("/api/auth/login", json={"name": "Vaun", "pin": f"{i:04d}"}).status_code for i in range(6)]
+codes = [g.post("/api/auth/login", json={"name": "Jordan", "pin": f"{i:04d}"}).status_code for i in range(6)]
 check("login · 6th wrong PIN in a row is blocked", codes[-1] == 429, codes)
-check("login · blocked even with the right PIN for a while", g.post("/api/auth/login", json={"name": "Vaun", "pin": "246810"}).status_code == 429)
-check("login · a stranger's bad tries don't lock Vaun out on her own phone",
-      client("10.0.0.7").post("/api/auth/login", json={"name": "Vaun", "pin": "246810"}).status_code == 200)
+check("login · blocked even with the right PIN for a while", g.post("/api/auth/login", json={"name": "Jordan", "pin": "246810"}).status_code == 429)
+check("login · a stranger's bad tries don't lock Jordan out on their own phone",
+      client("10.0.0.7").post("/api/auth/login", json={"name": "Jordan", "pin": "246810"}).status_code == 200)
 bad = [client(f"10.1.0.{i}").post("/api/auth/login", json={"name": "admin", "pin": "x"}).status_code for i in range(6)]
 check("login · 6 bad admin tries from elsewhere don't lock the real admin out",
       client("10.9.9.9").post("/api/auth/login", json={"name": "admin", "pin": "admin-pw-123"}).status_code == 200, bad)
-spread = [client(f"10.2.{i // 250}.{i % 250}").post("/api/auth/login", json={"name": "Vaun", "pin": f"{i:04d}"}).status_code for i in range(52)]
+spread = [client(f"10.2.{i // 250}.{i % 250}").post("/api/auth/login", json={"name": "Jordan", "pin": f"{i:04d}"}).status_code for i in range(52)]
 check("login · guessing spread over many addresses still stalls (50 per name)", spread[-1] == 429, spread[-3:])
 auth._fails.clear()
 
@@ -199,23 +199,23 @@ for path in ("/api/entries", "/api/summary", "/api/export.csv", "/api/team", "/a
     check(f"admin · {path}", boss.get(path).status_code == 200)
 check("admin · can edit anyone's note", boss.patch(f"/api/entries/{e['id']}", json={"people_served": 2}).json()["people_served"] == 2)
 team = boss.get("/api/team").json()["users"]
-check("admin · team lists accounts, no PIN hashes", {"Dee", "Vaun"} <= {u["name"] for u in team} and all("pin_hash" not in u for u in team))
-vid = db.user_by_name("Vaun")["id"]
-vaun = client()
-sign_in(vaun, "Vaun", "246810", vid)
+check("admin · team lists accounts, no PIN hashes", {"Dee", "Jordan"} <= {u["name"] for u in team} and all("pin_hash" not in u for u in team))
+vid = db.user_by_name("Jordan")["id"]
+jordan = client()
+sign_in(jordan, "Jordan", "246810", vid)
 boss.patch(f"/api/team/{vid}", json={"role": "admin"})
-check("admin · promoted, no two-step yet: still no admin data", vaun.get("/api/entries").status_code == 403)
-check("admin · promoted: told to set up two-step", vaun.get("/api/auth/me").json()["needs_2fa"] is True)
-_, r = enroll(vaun, vid)
-check("admin · promoted + two-step on: admin at once", r.status_code == 200 and vaun.get("/api/entries").status_code == 200)
-check("team · shows who has two-step", {u["name"]: u["mfa"] for u in boss.get("/api/team").json()["users"]}["Vaun"] == 1)
+check("admin · promoted, no two-step yet: still no admin data", jordan.get("/api/entries").status_code == 403)
+check("admin · promoted: told to set up two-step", jordan.get("/api/auth/me").json()["needs_2fa"] is True)
+_, r = enroll(jordan, vid)
+check("admin · promoted + two-step on: admin at once", r.status_code == 200 and jordan.get("/api/entries").status_code == 200)
+check("team · shows who has two-step", {u["name"]: u["mfa"] for u in boss.get("/api/team").json()["users"]}["Jordan"] == 1)
 boss.patch(f"/api/team/{vid}", json={"role": "worker"})
-check("admin · demote: takes effect at once", vaun.get("/api/entries").status_code == 403)
+check("admin · demote: takes effect at once", jordan.get("/api/entries").status_code == 403)
 boss.patch(f"/api/team/{vid}", json={"pin": "135790"})
-check("admin · reset PIN (two-step still asked)", client().post("/api/auth/login", json={"name": "Vaun", "pin": "135790"}).json() == {"need_code": True})
+check("admin · reset PIN (two-step still asked)", client().post("/api/auth/login", json={"name": "Jordan", "pin": "135790"}).json() == {"need_code": True})
 check("team · worker can't reset someone's two-step", dee.post(f"/api/team/{vid}/reset-2fa").status_code == 403)
-check("team · admin resets Vaun's two-step (lost phone)", boss.post(f"/api/team/{vid}/reset-2fa").status_code == 200 and not mfa.enabled(vid))
-check("team · after reset, PIN alone signs in again", client().post("/api/auth/login", json={"name": "Vaun", "pin": "135790"}).json()["role"] == "worker")
+check("team · admin resets Jordan's two-step (lost phone)", boss.post(f"/api/team/{vid}/reset-2fa").status_code == 200 and not mfa.enabled(vid))
+check("team · after reset, PIN alone signs in again", client().post("/api/auth/login", json={"name": "Jordan", "pin": "135790"}).json()["role"] == "worker")
 
 # --- optional two-step for a regular person ---
 dee2 = client()

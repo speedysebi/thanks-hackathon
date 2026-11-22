@@ -45,6 +45,8 @@ jobs:
         run: python -m eval.data_correctness_test
       - name: Linking a texting phone to an account
         run: python -m eval.link_phone_test
+      - name: Spanish text replies
+        run: python -m eval.spanish_sms_test
       - name: Keyword reader accuracy stays at 88%+ on every set
         run: python -m eval.run_eval --min 88
       - name: Every SMS reply fits in one text

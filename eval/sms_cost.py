@@ -36,9 +36,10 @@ replies = []
 for i, text in enumerate(notes):
     xml = c.post("/sms", data={"From": f"+1414555{i:04d}", "Body": text}).text
     replies.append(xml.split("<Message>")[1].split("</Message>")[0].replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"))
-for cmd in ("HELP", "ME", "UNDO", "NAME Dee"):
+for cmd in ("HELP", "ME", "UNDO", "NAME Dee", "AYUDA", "YO", "DESHACER", "NOMBRE Dee", "ESPAÑOL",
+            "dimos comida a 20 niños y 5 familias en sherman park, llevé a una mamá a 414 life, llamarla el viernes"):
     xml = c.post("/sms", data={"From": "+14145550001", "Body": cmd}).text
-    replies.append(xml.split("<Message>")[1].split("</Message>")[0].replace("&amp;", "&"))
+    replies.append(xml.split("<Message>")[1].split("</Message>")[0].replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"))
 segs = [segments(r) for r in replies]
 print(f"{len(replies)} replies · avg {statistics.mean(segs):.2f} segments · max {max(segs)} · "
       f"{sum(s == 1 for s in segs)}/{len(segs)} fit in one segment · avg {statistics.mean(len(r) for r in replies):.0f} chars")

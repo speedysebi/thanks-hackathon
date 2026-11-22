@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     last_login TEXT
 );
+-- reply language a phone asked for (ESPANOL / ENGLISH). No row = follow the language of each text.
+CREATE TABLE IF NOT EXISTS sms_lang (
+    phone TEXT PRIMARY KEY,
+    lang  TEXT NOT NULL                    -- en | es
+);
 -- a worker's texting phone, linked to their account so texts show on My notes (proved by texting LINK <code>)
 CREATE TABLE IF NOT EXISTS phone_links (
     phone     TEXT PRIMARY KEY,
@@ -399,6 +404,18 @@ def unlink_phones(user_id: int) -> int:
     """Stop crediting new texts to the account. Notes already credited stay (the work still happened)."""
     with connect() as conn:
         return conn.execute("DELETE FROM phone_links WHERE user_id = ?", (user_id,)).rowcount
+
+
+def sms_lang(phone: str) -> str | None:
+    with connect() as conn:
+        r = conn.execute("SELECT lang FROM sms_lang WHERE phone = ?", (phone,)).fetchone()
+        return r["lang"] if r else None
+
+
+def set_sms_lang(phone: str, lang: str) -> None:
+    with connect() as conn:
+        conn.execute("INSERT INTO sms_lang (phone, lang) VALUES (?, ?) ON CONFLICT(phone) DO UPDATE SET lang = excluded.lang",
+                     (phone, lang))
 
 
 def clear_all() -> None:

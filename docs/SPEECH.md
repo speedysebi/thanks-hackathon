@@ -54,9 +54,9 @@ All examples are synthetic. Cost figures are estimates from the README (check cu
 > Texting adds a few dollars a month, plus a one-time phone number registration. These are estimates; real bills depend on use.
 
 ## Slide 8 · 3:30–4:00 · Next step
-> What we'd ask of ComForce: a small pilot. We'd test on workers' real phones, agree together on how data is handled, finish the hosting and texting setup, then measure the AI and ask workers if it fits their day.
+> We'd start with a small pilot. We'd agree on how to handle data, finish hosting and texting setup, test on workers' phones, and measure how well the AI works.
 >
-> ImpactText lets ComForce document its work, follow up on it, and prove its impact.
+> The next team can build on ImpactText. Every proposed change runs automated checks, including phone and desktop browser tests and a check that saved notes survive a server restart.
 >
 > Just text what you did. Thank you.
 
@@ -77,3 +77,4 @@ All examples are synthetic. Cost figures are estimates from the README (check cu
 - Rehearse with a timer at least 3 times.
 - If you do a live demo instead of screenshots, run it locally (`python -m app.seed --reset` then `uvicorn app.main:app`, open `http://localhost:8000`), already open before you start. No Render needed.
 - Likely questions: *How accurate is the AI?* "Not measured yet; the free keyword version is 90.6% on held-out notes, and the pilot would measure the AI." *Who owns the data?* "ComForce: one database file plus CSV export." *What about privacy?* "Phone numbers, emails and addresses are scrubbed before saving; names still need human review."
+- *Do updates deploy automatically?* GitHub Actions runs the checks and can request a Render deployment after a passing push to `main`. We still need to configure the deploy hook and verify a live rollout.

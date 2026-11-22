@@ -15,16 +15,9 @@ Write one name next to each:
 
 Best long-term answer for all of them: **ComForce's own email**, with a team member added. For the weekend, a team member's account works. Move it to ComForce afterwards.
 
-## 2. Merge the open PRs, in this order ⛔ (#5 is merged; #3 and #4 are already in `main` through it and can be closed)
-Wait for CI to go green on each one before merging the next. GitHub retargets a stacked PR to `main` when the PR under it merges.
-1. **#6** Follow-ups that went missing, safe edits, retries that counted twice. **Merge before the demo**: it fixes wrong numbers.
-2. **#7** "Fix" form for a saved note. Small, and safe before the demo.
-3. **#8** Link a texting phone to an account (`LINK 123456`). Then **#9** Spanish text replies, which sits on #8.
-4. **#10** Monthly report email. It does nothing until the SMTP settings are filled in.
-5. **#11** These docs.
-
-Short on time? #6 and #7 are the ones that matter for judging. #8–#10 can wait until after the demo.
-Then everyone runs `git pull` and `pip install -r requirements.txt`.
+## 2. Get the latest code ✅
+All feature PRs (#1–#12) are merged into `main`. Everyone runs `git pull` and `pip install -r requirements.txt`.
+The monthly report email (#10) does nothing until the SMTP settings are filled in.
 
 ## 3. Hosting (20 min) ⛔
 The repo now has a `Dockerfile` and `render.yaml`.

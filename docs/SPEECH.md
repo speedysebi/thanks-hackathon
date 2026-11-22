@@ -40,18 +40,14 @@ All examples are synthetic. Cost figures are estimates from the README (check cu
 > One honest limit: first names can still end up in notes, so people still need to review them.
 
 ## Slide 6 · 2:30–3:00 · Keyword extraction
-> We tested it on 30 notes we held back, scoring six fields each.
+> We tested the free version on 30 practice notes it had never seen. For each note, we checked six details: what was done, how many people, how many youth, where, and whether a follow-up is needed.
 >
-> Our first keyword reader got 65 percent of the fields right. After improving it, 90.6 percent. That's the version that runs with no AI at all, for free.
+> The first version got 65 percent right. After we improved it, 90.6 percent, with no AI and no cost.
 >
-> We haven't measured the AI version yet. That's the first thing we'd test in a pilot. These are small, synthetic tests, not real-world results.
+> These are small tests with made-up notes. Next, we'll measure the AI version and test with real ComForce notes in a pilot.
 
 ## Slide 7 · 3:00–3:30 · Low cost to run
-> It's cheap to run. Hosting with storage is about 7 dollars and 25 cents a month.
->
-> For about 300 notes a month, AI adds about 2 dollars 50, or 10 cents with a smaller model. And it works with no AI at all for zero dollars.
->
-> Texting adds a few dollars a month, plus a one-time phone number registration. These are estimates; real bills depend on use.
+> ImpactText was built to be cheap. Hosting on Render is about 7 dollars a month. AI reading for 300 notes adds about 2 dollars 50, or 10 cents with a smaller model, and it works with no AI at all for free. Texting is a few dollars more. All in, about 10 dollars a month.
 
 ## Slide 7b · 3:30–3:55 · Every change is checked automatically
 > Volunteers can't afford a broken website, so every update has to pass automated checks first.
@@ -65,7 +61,7 @@ All examples are synthetic. Cost figures are estimates from the README (check cu
 >
 > ImpactText helps ComForce document its work and prove its impact. Just text what you did. Thank you.
 
-**Runs about 4:20 with the CI/CD slide. To land at 4:00, trim ~20 seconds (e.g. slide 7 down to its main number, or drop the restart detail on slide 7b).**
+**Runs about 4:10 with the CI/CD slide. Rehearse with a timer; if over 4:00, drop the restart detail on slide 7b.**
 
 ---
 

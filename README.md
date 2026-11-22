@@ -29,12 +29,16 @@ People and youth served, referrals, hours, resolved rate · people served per we
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env          # add ANTHROPIC_API_KEY for AI; leave blank to use the free keyword extractor
-python -m app.seed --reset      # ~155 SYNTHETIC demo entries over 90 days
+python -m app.seed               # optional on a fresh local DB: add synthetic demo entries
 uvicorn app.main:app --reload   # prints the admin password if you didn't set ADMIN_PASSWORD
 ```
 Open http://127.0.0.1:8000.
 
-**Putting it online:** `render.yaml` + `Dockerfile` (Render → New → Blueprint, Starter plan + 1 GB disk). **Free demo instead:** `render.free.yaml` (same Blueprint flow, set *Blueprint Path* to `render.free.yaml`; $0, no disk, re-seeds synthetic demo data on every boot, so anything added is wiped when it sleeps). **CI/CD:** GitHub Actions (`.github/workflows/ci.yml`) runs every test, the emulated-phone browser test, and a build + smoke test of the Docker image on each push and PR. Pushes to `main` deploy to Render only when all of that passes (needs the `RENDER_DEPLOY_HOOK_URL` secret). The steps that need a person (accounts, domain, admin setup, Twilio registration) are in **[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md)**.
+For an isolated development database, a code map, and checks by feature, see the [contributor guide](docs/DEVELOPMENT.md).
+
+Use `render.yaml` and `Dockerfile` for a Render service with a persistent disk. For a disposable demo, set the Blueprint Path to `render.free.yaml`. That service seeds synthetic data on startup and uses ephemeral storage.
+
+GitHub Actions runs automated checks, browser tests, and Docker smoke tests on PRs and pushes to `main`. A passing `main` push can trigger the production Render hook when `RENDER_DEPLOY_HOOK_URL` is configured. Account setup and production verification are covered in the [launch checklist](docs/LAUNCH_CHECKLIST.md).
 
 ## Two sides: regular people and admins
 | | Who | Pages | Sign-in |

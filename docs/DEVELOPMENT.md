@@ -48,7 +48,7 @@ Run these commands from the repository root in the activated environment, or inv
 | Linking a phone or changing SMS commands | `python -m eval.link_phone_test` and `python -m eval.spanish_sms_test` |
 | SMS copy | `python -m eval.sms_cost` |
 
-For browser checks, start a server with seeded synthetic data, `ADMIN_PASSWORD=sim-admin`, and `ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP`. These values are fixtures for the test server. Run `python -m eval.browser_test http://127.0.0.1:8000 screenshots` with Chrome or Edge installed. If the script prints “No Edge/Chrome found; skipping,” set `CHROME_BIN` to the browser executable and rerun it.
+For browser checks, start a server with seeded synthetic data, `ADMIN_PASSWORD=sim-admin`, and `ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP`. These values are fixtures for the test server. Run `python -m eval.browser_test http://127.0.0.1:8000 screenshots` with Chrome or Edge installed. If the script prints “No Edge/Chrome found; skipping,” set `CHROME_BIN` to the browser executable and rerun it. To refresh the README screenshots in `docs/screenshots/`, run `python -m eval.screenshots http://127.0.0.1:8000` against the same kind of server after `python -m app.seed --reset` on a disposable `IMPACT_DB`.
 
 ## Read CI and deployment results
 

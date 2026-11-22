@@ -117,7 +117,7 @@ Also: 66/66 robustness checks, 139/139 sign-in, two-step and access checks, 48/4
 | Hosting (small Render/Railway/Fly instance with a disk) | $0–7 |
 
 ## Not done yet / next
-In review: link a worker's account to their texting phone (#8) · "Fix" form for a note (#7) · Spanish SMS replies (#9) · monthly report emailed to ComForce (#10).
+Done this weekend: link a worker's account to their texting phone · "Fix" form for a note · Spanish SMS replies · monthly report emailed to ComForce (turns on once the SMTP settings are filled in) · free Render demo blueprint (`render.free.yaml`).
 
 Still open:
 - **Tested on real phones:** the mic button, Add to Home Screen, and the offline queue have only run in emulated phones (see the launch checklist, step 9).

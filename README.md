@@ -1,132 +1,93 @@
-# ImpactText · Hacksgiving 2026 (Track 03: Data Collection & Impact Measurement)
+# ImpactText
 
 **Text it, say it, or type it. We do the paperwork.**
+Hacksgiving 2026 · Track 03: Data Collection & Impact Measurement · built for ComForce MKE (Community Task Force Milwaukee)
 
-ComForce MKE workers are out in the neighborhood, not at a desk. ImpactText lets them log what they did the way they'd tell a friend:
+ComForce MKE workers do crisis response, violence prevention and youth work on Milwaukee's north side. They're out in the neighborhood, not at a desk, and funders judge their programs on data that nobody has time to write down.
+
+ImpactText lets a worker log what they did the way they'd tell a friend:
 
 > *"fed 20 kids at sherman park, sent 1 mom to 414 life, need to call her back friday"*
 
-It becomes a clean record (activity, people served, youth, neighborhood, referrals, follow-up), shows up on a dashboard, and rolls into a funder-ready impact report with one click. The records belong to ComForce: one SQLite file plus a one-click CSV export.
+That one line becomes a clean record (activity, people served, youth, neighborhood, referral, follow-up). It shows up on a dashboard and rolls into a funder-ready impact report with one click.
 
-## Three ways to log (no app to install, no training)
-| Channel | Who it's for | Cost |
-|---|---|---|
-| **Text a number** (Twilio SMS) | Anyone with any phone, even a flip phone with no data | about 1¢ per text |
-| **Tap and talk** (web page, mic button) | Workers who'd rather talk than type. English or Spanish | free (browser speech recognition) |
-| **Type it** (same web page) | Office or volunteer laptop | free |
+| Text from any phone | Or tap and talk | Admin dashboard | One-click grant report |
+|---|---|---|---|
+| <img src="docs/screenshots/text-it.png" width="200" alt="SMS conversation: a worker texts a note and gets the structured record back"> | <img src="docs/screenshots/log.png" width="200" alt="Log page with a saved note broken into activity, people, youth and place"> | <img src="docs/screenshots/dashboard.png" width="320" alt="Dashboard with totals, weekly chart and follow-ups waiting"> | <img src="docs/screenshots/report.png" width="320" alt="Printable community impact report"> |
 
-SMS commands: just text what you did · `NAME Dee` · `UNDO` · `ME` (your totals this month) · `LINK 123456` (code from My notes: your texts then show there too) · `HELP`
+*All data shown is synthetic.*
 
-**En español:** texts written in Spanish get Spanish replies. Commands: `AYUDA` · `NOMBRE Dee` · `DESHACER` · `YO` · `ENLAZAR 123456`. Text `ESPAÑOL` or `ENGLISH` to pick a language for good.
+## What Track 03 asked for, and what we built
+| The track asks to… | ImpactText |
+|---|---|
+| **Simplify how workers document** their activities | Text a number (works on a flip phone), tap the mic and talk (English or Spanish), or type. No app to install, no account, no training. One sentence is enough. |
+| Let them **keep ownership of their records** | One SQLite file and a one-click CSV export that ComForce keeps. A live link feeds Google Sheets and Excel. Workers who sign in can see and fix their own notes. |
+| **Measure outcomes** | People and youth served, referrals by partner, hours, neighborhoods, and resolved vs. open follow-ups. Follow-ups show up in Google, Outlook and Apple calendars. |
+| **Communicate impact** | **Make grant report** writes a printable, Save-as-PDF report from the numbers. It can also be emailed to ComForce automatically every month. |
 
-## What's on the dashboard
-People and youth served, referrals, hours, resolved rate · people served per week · all open follow-ups, oldest due first (one tap to mark done; independent of the chart period) · by activity, neighborhood, referral partner and worker · recent entries · **Export CSV** · **Make grant report** (printable, Save as PDF).
-
-**Monthly report by email:** set `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` and `REPORT_TO` (any mail account with SMTP, e.g. Gmail with an app password, so it's free) and in the first week of each month the server emails last month's report to ComForce, once. Admins can also press **✉ Email last month's report** on `/report`, or run `python -m app.monthly_report [--month 2026-10] [--send]`. The email has the same report as `/report`. No raw notes or phone numbers go out.
-
-## Run it (2 minutes)
+## Try it (about 2 minutes)
+Python 3.13, from the repo root:
 ```powershell
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-copy .env.example .env          # add ANTHROPIC_API_KEY for AI; leave blank to use the free keyword extractor
-python -m app.seed               # optional on a fresh local DB: add synthetic demo entries
-uvicorn app.main:app --reload   # prints the admin password if you didn't set ADMIN_PASSWORD
+python -m app.seed                # ~160 synthetic demo entries over 90 days
+uvicorn app.main:app --reload     # prints a made-up admin password
 ```
-Open http://127.0.0.1:8000.
+Then open http://127.0.0.1:8000:
+1. **`/`** Type a note, or tap **Tap and talk** in Chrome or Edge and say one. It's saved and broken into fields at once.
+2. **`/phone`** The SMS simulator, which runs the same code a real text does. Try `NAME Dee`, then a note, then `ME` or `UNDO`. In Spanish: `AYUDA`, or a note like *dimos comida a 20 niños en sherman park*.
+3. **`/dashboard`** Sign in as `admin` with the printed password. Admins must use two-step sign-in, so scan the QR code with any authenticator app. To skip that, start the server with `ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP` (a demo-only key) and get the code with `python -c "from app import mfa; print(mfa.code_now('JBSWY3DPEHPK3PXP'))"`.
+4. **Make grant report → Print / Save PDF.**
 
-For an isolated development database, a code map, and checks by feature, see the [contributor guide](docs/DEVELOPMENT.md).
-
-Use `render.yaml` and `Dockerfile` for a Render service with a persistent disk. For a disposable demo, set the Blueprint Path to `render.free.yaml`. That service seeds synthetic data on startup and uses ephemeral storage.
-
-GitHub Actions runs automated checks, browser tests, and Docker smoke tests on PRs and pushes to `main`. A passing `main` push can trigger the production Render hook when `RENDER_DEPLOY_HOOK_URL` is configured. Account setup and production verification are covered in the [launch checklist](docs/LAUNCH_CHECKLIST.md).
-
-## Two sides: regular people and admins
-| | Who | Pages | Sign-in |
-|---|---|---|---|
-| **Regular person** | Workers, volunteers | `/` log (type or talk) · `/phone` text simulator · `/me` My notes | **Optional.** Anyone can log and undo what they just saved. An account (name + PIN, made at `/login`) adds My notes: their own totals and follow-ups, and fixing or removing their own notes from any phone. |
-| **Admin** | ComForce staff | `/dashboard` · `/report` · `/connect` (calendars, sheets, phone setup) · `/team` (accounts) · `/console` (testing) · CSV export | **Required, plus two-step sign-in.** Name `admin` + `ADMIN_PASSWORD` from `.env`, or any account an admin has promoted on `/team`, then a 6-digit code from an authenticator app. |
-
-**Two-step sign-in** (`/security`):
-- **Required for admins.** The first time an admin signs in, they scan a QR code with Google Authenticator, Microsoft Authenticator, Authy or similar. Until then, the only page they can open is that setup page.
-- **Optional for everyone else.** Turning it on also signs out that person's other devices.
-- Each code works once. Setup gives 10 one-time backup codes for a lost phone.
-- Lost phone: an admin presses **Reset 2-step** on `/team`. For the built-in admin, run `python -m app.mfa reset admin` on the server.
-- Standard TOTP, no SMS, no outside service, no cost.
-
-- Texting (`/sms`) needs no account; texts are tied to the sender's phone.
-- If `ADMIN_PASSWORD` isn't set, the server makes one up, saves it in `data/admin_password.txt` and prints it at startup, so the admin side is never left open by accident.
-- Signed-in sessions are a signed cookie. Changing someone's role or removing their account on `/team` takes effect on their next click. PINs are stored as PBKDF2 hashes, and 5 wrong tries lock that name for 10 minutes.
-- Tests: `python -m eval.auth_test` checks every route is either public on purpose or admin-only. Two separate reviews (a code read, and 361 attack requests against a running server) found no way for a regular person to reach admin data.
-
-## On phones and in the apps people already use (`/connect`)
-- **Phone app:** add ImpactText to the home screen (iPhone: Share → Add to Home Screen; Android: Install app). Notes saved with no signal stay on the phone and send themselves later, keeping the day they happened.
-- **Calendars:** open follow-ups as a calendar that **Google Calendar, Outlook and Apple Calendar** can subscribe to, per worker or for everyone. The due day is read from the note ("call her back Friday"). Sensitive cases show only a number. Each follow-up on the dashboard also has a 📅 button that adds it to Google, Outlook or Apple.
-- **Spreadsheets:** a live data link for **Google Sheets** (`=IMPORTDATA`), **Excel** (Data → From Web) and Numbers.
-- **Siri** ("Hey Siri, log impact") via the Shortcuts app, and **Android share**: share text from any app to ImpactText.
-- No developer accounts or OAuth: it all uses open formats (iCalendar, CSV, web app manifest).
-- Phones and Google/Microsoft must be able to reach the server: run with `--host 0.0.0.0` for phones on the same Wi-Fi, and use an https address (a tunnel or hosting, then set `PUBLIC_URL`) to install the app and use the calendar and spreadsheet links.
-- The calendar and spreadsheet links skip the admin sign-in (those apps can't sign in) and are protected by a secret token instead. **Anyone with a link can read it**; "Make new links" on `/connect` revokes the old ones. Tests: `python -m eval.integrations_test`.
+It works with no API key: a free keyword reader fills in the fields. Add `ANTHROPIC_API_KEY` to `.env` (see `.env.example`) and Claude reads the notes and writes the report.
 
 ## How it works
 ```
-SMS (Twilio) ─┐
-Voice (browser)┼─> POST /api/log or /sms ─> extract.py ─> SQLite (data/impact.db) ─> /dashboard, /report, CSV
-Typed note ───┘         Claude + JSON schema (strict)
-                        └─ falls back to free keyword rules if no key / offline
+Text (Twilio) ──┐
+Voice (browser) ┼─> scrub personal details ─> Claude, strict JSON schema ─> SQLite ─> dashboard · report · CSV · calendars
+Typed note ─────┘                             └─ keyword rules if there's no key or the AI is down
 ```
-- `app/extract.py`: the prompt, the output schema, the keyword baseline, and normalization (e.g. "414 life" becomes `414 LIFE`, ZIP 53210 becomes Sherman Park)
-- `app/impact.py`: the numbers and the report (AI-written from the numbers only, or a template)
-- `app/main.py`: routes, including the Twilio webhook with signature check
-- `app/db.py`: SQLite. `app/seed.py`: synthetic demo data. `eval/`: accuracy test
+- **The AI only fills in fields.** Every number in the report comes from the database, and the report prompt forbids inventing figures.
+- **Privacy first.** Phone numbers, emails, street addresses and titled names ("Ms. Johnson") are removed *before* a note is stored or sent to the AI. Entries about violence are flagged sensitive and kept out of report stories.
+- **Built for the field.** It never fails if the AI does: the keyword reader still saves the note. A double-sent text counts once. Notes typed with no signal wait on the phone and send themselves later, keeping the day they happened.
+- **Two sides.** Workers never need an account. Admins see everything, and admin sign-in requires a second step (an authenticator app code).
 
-## Trust and privacy
-- **Personal details are scrubbed before anything is stored or sent to the AI:** phone numbers, emails, street addresses and titled names ("Ms. Johnson"). The AI summary also rewrites any other names ("a mother"). Limit: a bare first name in the raw note isn't caught offline. Entries about violence or injury are flagged `sensitive` and kept out of report stories, and the report only quotes AI-written summaries.
-- A text sent twice (bad signal, double tap) is only counted once.
-- The AI only fills in fields. Every number in the report comes from the database, and the report prompt forbids inventing figures.
-- **Never fails in the field.** If the AI is down, the note is still saved by the keyword extractor.
-- `UNDO` only removes your own text from the last 24 hours. Texts are tied to the sender's phone, so two workers who pick the same `NAME` can't undo or merge each other's entries. Phone numbers only ever leave the server as the last 4 digits.
-- **Only admins see everyone's data**, and admins need two-step sign-in. A regular person sees only their own notes, and only if they make an account. Set your own `ADMIN_PASSWORD` in `.env` before real data goes in.
-- **Texts:** once online, `/sms` only accepts texts signed by Twilio. The exception is the `/phone` simulator's fictional 555-01xx numbers. Nobody can pretend to be a worker's phone to undo their text or read their totals.
-- Someone retyping another person's note gets "already saved", not the note or a way to undo it.
-- A note resent by a phone (lost reply, offline queue) carries the same random id, so it counts once even hours later.
+Every page, command and safeguard is described in **[docs/FEATURES.md](docs/FEATURES.md)**.
 
-## Measured (details in docs/EXPERIMENTS.md)
-| Extractor | Held-out test notes | Dictation-style notes |
-|---|---|---|
-| Keywords v1 | 65.0% | – |
-| Keywords v2 (current free fallback) | **90.6–91.1%** | **91.1%** |
-| Claude | run `python -m eval.run_eval --ai` | |
-
-Also: 66/66 robustness checks, 139/139 sign-in, two-step and access checks, 48/48 calendar/phone-app checks, 43/43 browser checks on an emulated iPhone, Android and desktop (90 page views in light and dark mode), 200 texts/sec with zero errors, every SMS reply fits one segment.
-`/api/stats` shows real latency, token use and cost per note while you demo.
-
-| Command | What it does |
+## Measured
+| | Result |
 |---|---|
-| `python -m eval.run_eval [--ai] [-v]` | accuracy on dev / test / voice sets |
-| `python -m eval.ai_sweep [--quick]` | Opus vs Sonnet vs Haiku, effort, prompt variants: accuracy and $/month |
-| `python -m eval.robustness` | hostile and odd inputs, privacy check |
-| `python -m eval.sms_cost` | SMS segments per reply |
-| `python -m eval.load_test URL N C` | N texts, C at once, against a running server |
-| `python -m eval.auth_test` | admin vs regular-person access, two-step sign-in, every route |
-| `python -m eval.data_correctness_test` | follow-up visibility, edit privacy/counts, concurrent retries and migrations |
-| `python -m eval.smoke URL PW TOTP` | quick check of a running server (CI runs it inside the Docker image) |
-| `python -m eval.integrations_test` | calendars, spreadsheet links, phone app |
-| `python -m eval.browser_test URL [dir]` | headless Edge/Chrome as iPhone, Android and desktop; saves screenshots (server needs `ADMIN_PASSWORD=sim-admin` and `ADMIN_TOTP_SECRET=JBSWY3DPEHPK3PXP`) |
+| Fields right on held-out notes, free keyword reader | **91.1%** (first version: 65%). Same on dictation-style notes. [Details](docs/EXPERIMENTS.md) |
+| Fields right with Claude | run `python -m eval.run_eval --ai` with a key (about 60 notes, a few cents) |
+| Odd and hostile inputs, privacy scrubbing | 66/66 |
+| Sign-in, two-step and "who can open what" on every route | 139/139 |
+| Calendars, spreadsheet links, phone app | 48/48 |
+| Edits, retries, phone linking, Spanish texts, monthly email | 46 unit tests |
+| Emulated iPhone, Android, small phone and desktop, light and dark | 46 checks, 120 page views |
+| Text replies that fit in one SMS (one charge) | 70/70, English and Spanish |
+| Load | 200 texts/sec, zero errors |
 
-## Cost to run (estimates; check current prices)
-| Item | Monthly |
+GitHub Actions runs all of this, plus a Docker build and smoke test, on every pull request.
+
+## What it costs to run
+About **$10/month** for one nonprofit: a small server with a disk (~$7), a Twilio number and texts (a few dollars), and AI reading of ~300 notes (~$2.50 on Claude Opus 5.5, ~$0.10 on Haiku 5.5). A demo runs at $0: no AI key, the `/phone` simulator, and `render.free.yaml`. Check current prices.
+
+## Known limits / next
+- Tested on emulated phones only so far. The mic and Add to Home Screen still need a pass on real devices.
+- Real texting in the US needs Twilio A2P 10DLC registration, which takes days to weeks. Until then, use a trial number or the `/phone` simulator.
+- A bare first name in a note isn't removed when the AI is off. The AI summary does rewrite names.
+- One server and one SQLite file. That's right for one organization's team, but it isn't built to scale out.
+
+## More
+| Doc | For |
 |---|---|
-| AI note reading, about 300 notes/month on Claude Opus 5.5 (~750 input + ~250 output tokens each) | about $2.50 (about $0.10 on Claude Haiku 5.5: set `MODEL=claude-haiku-5-5` and the prices in .env) |
-| Twilio number + texts | a few dollars, plus one-time US A2P 10DLC registration (see docs/SMS_SETUP.md) |
-| Hosting (small Render/Railway/Fly instance with a disk) | $0–7 |
+| [docs/FEATURES.md](docs/FEATURES.md) | Every feature, the admin vs. worker sides, privacy rules, integrations |
+| [docs/PITCH.md](docs/PITCH.md) | The 4-minute pitch and demo script |
+| [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) | How accuracy, privacy, robustness, load and SMS cost were measured |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, code map, which test covers what |
+| [docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md) · [docs/SMS_SETUP.md](docs/SMS_SETUP.md) | Putting it online for ComForce: hosting, admin setup, Twilio, email |
+| [docs/DATA_CORRECTNESS.md](docs/DATA_CORRECTNESS.md) | Follow-ups, safe edits, duplicate-proof retries |
 
-## Not done yet / next
-Done this weekend: link a worker's account to their texting phone · "Fix" form for a note · Spanish SMS replies · monthly report emailed to ComForce (turns on once the SMTP settings are filled in) · free Render demo blueprint (`render.free.yaml`).
-
-Still open:
-- **Tested on real phones:** the mic button, Add to Home Screen, and the offline queue have only run in emulated phones (see the launch checklist, step 9).
-- **AI accuracy:** run `python -m eval.run_eval --ai` once there's an API key. The 91% figure is for the free keyword reader.
-- **Texting for real:** Twilio A2P 10DLC registration takes days to weeks. Until it's done, use a trial number or the `/phone` simulator.
-- **Google Sheets:** the live `=IMPORTDATA` link on `/connect` already keeps a sheet up to date (Sheets refreshes it about every hour). Pushing rows into a sheet on every note would need a Google Cloud project and OAuth, so we're leaving it out unless ComForce asks for it.
+Deploy: `render.yaml` (paid plan with a disk, deploys gated by CI) or `render.free.yaml` (a $0 demo that re-seeds synthetic data on boot).
 
 *Demo data is synthetic. No real ComForce records are in this repo.*

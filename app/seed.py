@@ -44,6 +44,8 @@ def make(day: date, rng: random.Random) -> dict:
     hood = rng.choices(HOODS, HOOD_W)[0]
     n = rng.randint(lo, hi)
     outcome = rng.choices(OUTCOMES, ow)[0]
+    if outcome == "needs_follow_up" and (date.today() - day).days > 28 and rng.random() < .7:
+        outcome = "resolved"  # like real life: most follow-ups from last month have been done
     summary = tmpl.format(n=n, place=PLACES[hood])
     return {
         "activity_date": day.isoformat(), "worker": rng.choices(WORKERS, [30, 14, 12, 12, 10, 9, 8, 5])[0],

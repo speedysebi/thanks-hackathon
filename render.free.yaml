@@ -1,0 +1,31 @@
+# FREE DEMO blueprint (for judging day). The real setup is render.yaml (Starter plan + disk, CI-gated deploys).
+# Render -> New -> Blueprint -> pick this repo -> set "Blueprint Path" to render.free.yaml.
+#
+# Differences from render.yaml, and why:
+#   plan: free, no disk  -> costs $0. The free tier has no disk, so the database lives inside the container
+#                           and is wiped whenever the service sleeps (~15 min idle) or redeploys.
+#   dockerCommand        -> re-seeds ~150 SYNTHETIC demo entries on every boot, so the dashboard is never empty
+#                           after a wipe. Notes you add during a demo last until the next sleep/redeploy.
+#   autoDeploy: true     -> a push to main redeploys (no deploy-hook secret needed for the demo).
+#   ADMIN_TOTP_SECRET    -> the admin's two-step code would otherwise have to be set up again after every wipe.
+#                           Put the same base32 secret in your authenticator app once and it keeps working.
+services:
+  - type: web
+    name: impacttext-demo
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health
+    dockerCommand: sh -c "python -m app.seed --reset && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false          # Render asks for it when you create the service. Sign in as name "admin".
+      - key: ADMIN_TOTP_SECRET
+        sync: false          # base32, e.g. from: python -c "import base64,os;print(base64.b32encode(os.urandom(20)).decode())"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false          # your https://....onrender.com address (fill in after the first deploy)
+      - key: MODEL
+        value: claude-opus-5-5
+      # Optional, add in the dashboard: ANTHROPIC_API_KEY (blank = free keyword extractor), TWILIO_AUTH_TOKEN.

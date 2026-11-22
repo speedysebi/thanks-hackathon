@@ -32,7 +32,7 @@ uvicorn app.main:app --reload   # prints the admin password if you didn't set AD
 ```
 Open http://127.0.0.1:8000.
 
-**Putting it online:** `render.yaml` + `Dockerfile` (Render → New → Blueprint, Starter plan + 1 GB disk). **CI/CD:** GitHub Actions (`.github/workflows/ci.yml`) runs every test, the emulated-phone browser test, and a build + smoke test of the Docker image on each push and PR. Pushes to `main` deploy to Render only when all of that passes (needs the `RENDER_DEPLOY_HOOK_URL` secret). The steps that need a person (accounts, domain, admin setup, Twilio registration) are in **[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md)**.
+**Putting it online:** `render.yaml` + `Dockerfile` (Render → New → Blueprint, Starter plan + 1 GB disk). **Free demo instead:** `render.free.yaml` (same Blueprint flow, set *Blueprint Path* to `render.free.yaml`; $0, no disk, re-seeds synthetic demo data on every boot, so anything added is wiped when it sleeps). **CI/CD:** GitHub Actions (`.github/workflows/ci.yml`) runs every test, the emulated-phone browser test, and a build + smoke test of the Docker image on each push and PR. Pushes to `main` deploy to Render only when all of that passes (needs the `RENDER_DEPLOY_HOOK_URL` secret). The steps that need a person (accounts, domain, admin setup, Twilio registration) are in **[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md)**.
 
 ## Two sides: regular people and admins
 | | Who | Pages | Sign-in |

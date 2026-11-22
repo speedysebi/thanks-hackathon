@@ -50,7 +50,7 @@ check("due · follow-up line wins over the note", due("call back tuesday", "on f
 
 # --- data ---
 e1 = c.post("/api/log", json={"text": "connected a mom to 211 for rent, need to call her back friday", "worker": "Dee"}).json()["entry"]
-e2 = c.post("/api/log", json={"text": "shooting on center st, stayed w the family, check on them tomorrow", "worker": "Vaun"}).json()["entry"]
+e2 = c.post("/api/log", json={"text": "shooting on center st, stayed w the family, check on them tomorrow", "worker": "Jordan"}).json()["entry"]
 c.patch(f"/api/entries/{e1['id']}", json={"outcome": "needs_follow_up", "follow_up": "Call her back Friday, about rent; Ms. note, with \\ backslash"})
 c.patch(f"/api/entries/{e2['id']}", json={"outcome": "needs_follow_up"})
 

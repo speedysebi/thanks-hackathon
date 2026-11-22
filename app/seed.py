@@ -10,7 +10,7 @@ from datetime import date, timedelta
 
 from app import db
 
-WORKERS = ["Vaun", "Dee", "Marcus", "Tasha", "Andre", "Keisha", "Luis", "Volunteer …0187"]
+WORKERS = ["Jordan", "Dee", "Marcus", "Tasha", "Andre", "Keisha", "Luis", "Volunteer …0187"]
 HOODS = ["Sherman Park", "Washington Park", "Amani / Metcalfe Park", "Sunset Heights", "Lindsay Heights",
          "Harambee", "Midtown", "Old North Milwaukee"]
 HOOD_W = [22, 18, 14, 14, 9, 8, 8, 7]

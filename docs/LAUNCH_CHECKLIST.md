@@ -66,6 +66,11 @@ If you want `impact.comforcemke.org` (or a new domain, about $10–15/year at Cl
 - Pick the account it's sent from (best: a ComForce mailbox). For Gmail, turn on 2-Step Verification, then Google Account → Security → **App passwords**, and make one for "ImpactText".
 - In Render, set `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USER=<that address>`, `SMTP_PASSWORD=<the app password>`, and `REPORT_TO=<who gets it, comma-separated>`.
 - On `/report`, press **✉ Email last month's report** once to check it arrives (and isn't in spam).
+- Automatic attempts retry hourly during the first week. If SMTP accepts only some recipients,
+  those addresses are saved in SQLite and retries send only to the remaining addresses, including
+  after a restart. The month is marked complete only after every configured recipient is accepted.
+  Manual sends deliberately resend to everyone. SMTP acceptance does not guarantee inbox delivery;
+  an interrupted connection after acceptance can still leave delivery uncertain.
 
 ## 8. Before real ComForce data goes in ⚠️
 - **The live database has demo data if you seeded it.** `python -m app.seed --reset` wipes everything, so run it only on purpose. Real use should start from an empty database.
@@ -82,6 +87,6 @@ We tested in emulated phones (iPhone, Android, desktop: 43 checks, 90 page views
 - [ ] If Twilio is set up: text the number from a verified phone, then text `UNDO`.
 
 ## Known gaps (fine to say out loud at judging)
-- Texting isn't linked to accounts yet: texts count per phone number and don't show on My notes.
+- Texts only show on My notes after the worker links their phone (My notes → Link my phone, then text `LINK` + the code). Set `SMS_NUMBER` so the page shows which number to text.
 - One server, one SQLite file. Fine for one nonprofit's team; not built to scale out.
 - The first admin to sign in sets up 2FA by scanning a QR code. Whoever knows the password first can enroll their phone, so set the password privately and sign in right away. Or pre-load `ADMIN_TOTP_SECRET`.

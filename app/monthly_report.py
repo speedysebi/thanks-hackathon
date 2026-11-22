@@ -25,6 +25,7 @@ import time
 from calendar import monthrange
 from datetime import date, timedelta
 from email.message import EmailMessage
+from email.utils import getaddresses
 
 from app import db, impact, llm
 
@@ -58,7 +59,7 @@ def build(month: str) -> dict:
     md = impact.report(s, entries)["markdown"]
     md = md.replace(f"In the last {days} days", f"In {label}", 1)
     url = os.getenv("PUBLIC_URL", "").rstrip("/")
-    footer = (f"\n\nFull report, charts and Save as PDF: {url}/report?days=30" if url else "") + \
+    footer = (f"\n\nOpen the current reporting tools: {url}/report" if url else "") + \
              "\n\nSent automatically by ImpactText. Numbers come straight from the records; nothing is estimated." + \
              (" The text was drafted by AI from those numbers: read it before forwarding to a funder."
               if llm.available() and entries else "")
@@ -94,12 +95,23 @@ def _html(label: str, md: str) -> str:
             f"<h1 style='font-size:22px'>ComForce MKE impact report: {html.escape(label)}</h1>{''.join(out)}</div>")
 
 
-def send(month: str, smtp=None) -> dict:
-    """Email the report for `month` now. Raises on any mail error."""
+def send(month: str, smtp=None, *, retry: bool = False) -> dict:
+    """Email `month`; automatic retries skip recipients already accepted by SMTP.
+
+    Explicit sends still resend to everyone. A partial refusal records accepted recipients
+    before raising SMTPRecipientsRefused, so a scheduled retry can resume after a restart.
+    """
     if not configured():
         raise RuntimeError("Set SMTP_HOST and REPORT_TO first (see .env.example).")
     r = build(month)
-    to = [a.strip() for a in os.environ["REPORT_TO"].split(",") if a.strip()]
+    to = list(dict.fromkeys(address for _, address in getaddresses([os.environ["REPORT_TO"]]) if address))
+    if not to:
+        raise ValueError("REPORT_TO must contain at least one email address.")
+    sent = db.report_recipients_sent(month) if retry else set()
+    pending = [address for address in to if address not in sent]
+    out = {"month": month, "to": to, "subject": r["subject"]}
+    if not pending:
+        return out
     msg = EmailMessage()
     msg["Subject"], msg["To"] = r["subject"], ", ".join(to)
     msg["From"] = os.getenv("REPORT_FROM") or os.getenv("SMTP_USER") or "impacttext@localhost"
@@ -113,8 +125,13 @@ def send(month: str, smtp=None) -> dict:
             s.starttls(context=ssl.create_default_context())
         if os.getenv("SMTP_USER"):
             s.login(os.environ["SMTP_USER"], os.getenv("SMTP_PASSWORD", ""))
-        s.send_message(msg)
-    return {"month": month, "to": to, "subject": r["subject"]}
+        # An explicit envelope avoids resending to every address in the To header on retry.
+        refused = s.send_message(msg, to_addrs=pending)
+        accepted = [address for address in pending if address not in refused]
+        db.mark_report_recipients_sent(month, accepted)
+        if refused:
+            raise smtplib.SMTPRecipientsRefused(refused)
+    return out
 
 
 def send_if_due(today: date | None = None, smtp=None) -> dict | None:
@@ -126,7 +143,7 @@ def send_if_due(today: date | None = None, smtp=None) -> dict | None:
     if not db.claim_report_send(month):  # already sent (or being sent right now)
         return None
     try:
-        out = send(month, smtp)
+        out = send(month, smtp, retry=True)
     except Exception as e:
         db.release_report_send(month)  # try again at the next check
         print(f"[monthly report] {month} not sent, will retry: {e}", flush=True)
@@ -161,7 +178,9 @@ if __name__ == "__main__":
     p.add_argument("--send", action="store_true", help="email it now")
     a = p.parse_args()
     if a.send:
-        print(send(a.month))
+        out = send(a.month)
+        db.mark_report_sent(a.month, ", ".join(out["to"]))
+        print(out)
     else:
         r = build(a.month)
         print("Subject:", r["subject"], "\n")

@@ -15,7 +15,9 @@ It becomes a clean record (activity, people served, youth, neighborhood, referra
 | **Tap and talk** (web page, mic button) | Workers who'd rather talk than type. English or Spanish | free (browser speech recognition) |
 | **Type it** (same web page) | Office or volunteer laptop | free |
 
-SMS commands: just text what you did · `NAME Dee` · `UNDO` · `ME` (your totals this month) · `HELP`
+SMS commands: just text what you did · `NAME Dee` · `UNDO` · `ME` (your totals this month) · `LINK 123456` (code from My notes: your texts then show there too) · `HELP`
+
+**En español:** texts written in Spanish get Spanish replies. Commands: `AYUDA` · `NOMBRE Dee` · `DESHACER` · `YO` · `ENLAZAR 123456`. Text `ESPAÑOL` or `ENGLISH` to pick a language for good.
 
 ## What's on the dashboard
 People and youth served, referrals, hours, resolved rate · people served per week · all open follow-ups, oldest due first (one tap to mark done; independent of the chart period) · by activity, neighborhood, referral partner and worker · recent entries · **Export CSV** · **Make grant report** (printable, Save as PDF).
@@ -32,7 +34,7 @@ uvicorn app.main:app --reload   # prints the admin password if you didn't set AD
 ```
 Open http://127.0.0.1:8000.
 
-**Putting it online:** `render.yaml` + `Dockerfile` (Render → New → Blueprint, Starter plan + 1 GB disk). **CI/CD:** GitHub Actions (`.github/workflows/ci.yml`) runs every test, the emulated-phone browser test, and a build + smoke test of the Docker image on each push and PR. Pushes to `main` deploy to Render only when all of that passes (needs the `RENDER_DEPLOY_HOOK_URL` secret). The steps that need a person (accounts, domain, admin setup, Twilio registration) are in **[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md)**.
+**Putting it online:** `render.yaml` + `Dockerfile` (Render → New → Blueprint, Starter plan + 1 GB disk). **Free demo instead:** `render.free.yaml` (same Blueprint flow, set *Blueprint Path* to `render.free.yaml`; $0, no disk, re-seeds synthetic demo data on every boot, so anything added is wiped when it sleeps). **CI/CD:** GitHub Actions (`.github/workflows/ci.yml`) runs every test, the emulated-phone browser test, and a build + smoke test of the Docker image on each push and PR. Pushes to `main` deploy to Render only when all of that passes (needs the `RENDER_DEPLOY_HOOK_URL` secret). The steps that need a person (accounts, domain, admin setup, Twilio registration) are in **[docs/LAUNCH_CHECKLIST.md](docs/LAUNCH_CHECKLIST.md)**.
 
 ## Two sides: regular people and admins
 | | Who | Pages | Sign-in |

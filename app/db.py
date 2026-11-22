@@ -49,12 +49,35 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
     last_login TEXT
 );
--- monthly report emails: one row per month, so a restart or a second check never sends it twice
+-- Monthly completion records and claims serialize automatic send attempts.
 CREATE TABLE IF NOT EXISTS report_sends (
     month      TEXT PRIMARY KEY,            -- YYYY-MM the report covers
     claimed_at TEXT,                        -- when a server started sending it
     sent_at    TEXT,                        -- NULL while being sent
     sent_to    TEXT NOT NULL DEFAULT ''
+);
+-- Keep accepted recipients even when a partial failure releases the month's send claim.
+CREATE TABLE IF NOT EXISTS report_deliveries (
+    month     TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    sent_at   TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    PRIMARY KEY (month, recipient)
+);
+-- reply language a phone asked for (ESPANOL / ENGLISH). No row = follow the language of each text.
+CREATE TABLE IF NOT EXISTS sms_lang (
+    phone TEXT PRIMARY KEY,
+    lang  TEXT NOT NULL                    -- en | es
+);
+-- a worker's texting phone, linked to their account so texts show on My notes (proved by texting LINK <code>)
+CREATE TABLE IF NOT EXISTS phone_links (
+    phone     TEXT PRIMARY KEY,
+    user_id   INTEGER NOT NULL,
+    linked_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE TABLE IF NOT EXISTS link_codes (
+    user_id    INTEGER PRIMARY KEY,         -- one live code per account; asking again replaces it
+    code       TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL
 );
 -- two-step sign-in (authenticator app codes). uid 0 = the built-in admin. Required for admins, optional for others.
 CREATE TABLE IF NOT EXISTS mfa (
@@ -293,6 +316,8 @@ def delete_user(user_id: int) -> bool:
     with connect() as conn:
         conn.execute("UPDATE entries SET user_id = NULL WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM mfa WHERE uid = ?", (user_id,))
+        conn.execute("DELETE FROM phone_links WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM link_codes WHERE user_id = ?", (user_id,))
         return conn.execute("DELETE FROM users WHERE id = ?", (user_id,)).rowcount > 0
 
 
@@ -367,9 +392,85 @@ def mark_report_sent(month: str, to: str) -> None:
         conn.execute("UPDATE report_sends SET sent_at = datetime('now','localtime'), sent_to = ? WHERE month = ?", (to, month))
 
 
+def report_recipients_sent(month: str) -> set[str]:
+    with connect() as conn:
+        return {r["recipient"] for r in conn.execute(
+            "SELECT recipient FROM report_deliveries WHERE month = ?", (month,))}
+
+
+def mark_report_recipients_sent(month: str, recipients: list[str]) -> None:
+    with connect() as conn:
+        conn.executemany("INSERT OR IGNORE INTO report_deliveries (month, recipient) VALUES (?, ?)",
+                         [(month, recipient) for recipient in recipients])
+
+
 def report_sends() -> list[dict]:
     with connect() as conn:
         return [dict(r) for r in conn.execute("SELECT * FROM report_sends WHERE sent_at IS NOT NULL ORDER BY month DESC LIMIT 12")]
+
+
+# ---------- linking a texting phone to an account ----------
+def set_link_code(user_id: int, code: str, minutes: int) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM link_codes WHERE expires_at < datetime('now','localtime')")
+        conn.execute("INSERT INTO link_codes (user_id, code, expires_at) VALUES (?, ?, datetime('now','localtime',?)) "
+                     "ON CONFLICT(user_id) DO UPDATE SET code = excluded.code, expires_at = excluded.expires_at",
+                     (user_id, code, f"+{int(minutes)} minutes"))
+
+
+def use_link_code(code: str, phone: str) -> dict | None:
+    """A live code texted from `phone`: link that phone to the code's account, credit its earlier texts
+    to the account, and use the code up. Returns the account, or None for a wrong or expired code."""
+    with connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        r = conn.execute("SELECT user_id FROM link_codes WHERE code = ? AND expires_at >= datetime('now','localtime')",
+                         (code,)).fetchone()
+        if not r:
+            return None
+        uid = r["user_id"]
+        user = get_user(uid, conn)
+        conn.execute("DELETE FROM link_codes WHERE user_id = ?", (uid,))
+        if not user:
+            return None
+        conn.execute("INSERT INTO phone_links (phone, user_id) VALUES (?, ?) "
+                     "ON CONFLICT(phone) DO UPDATE SET user_id = excluded.user_id, linked_at = datetime('now','localtime')",
+                     (phone, uid))
+        conn.execute("UPDATE entries SET user_id = ? WHERE phone = ? AND user_id IS NULL", (uid, phone))
+        conn.execute("INSERT INTO workers (phone, name) VALUES (?, ?) ON CONFLICT(phone) DO UPDATE SET name = excluded.name",
+                     (phone, user["name"]))
+        return user
+
+
+def linked_user(phone: str) -> dict | None:
+    with connect() as conn:
+        r = conn.execute("SELECT u.* FROM phone_links p JOIN users u ON u.id = p.user_id WHERE p.phone = ?",
+                         (phone,)).fetchone()
+        return dict(r) if r else None
+
+
+def phones_for_user(user_id: int) -> list[str]:
+    """Last 4 digits only: the full number never leaves the server."""
+    with connect() as conn:
+        return ["…" + r["phone"][-4:] for r in conn.execute(
+            "SELECT phone FROM phone_links WHERE user_id = ? ORDER BY linked_at", (user_id,))]
+
+
+def unlink_phones(user_id: int) -> int:
+    """Stop crediting new texts to the account. Notes already credited stay (the work still happened)."""
+    with connect() as conn:
+        return conn.execute("DELETE FROM phone_links WHERE user_id = ?", (user_id,)).rowcount
+
+
+def sms_lang(phone: str) -> str | None:
+    with connect() as conn:
+        r = conn.execute("SELECT lang FROM sms_lang WHERE phone = ?", (phone,)).fetchone()
+        return r["lang"] if r else None
+
+
+def set_sms_lang(phone: str, lang: str) -> None:
+    with connect() as conn:
+        conn.execute("INSERT INTO sms_lang (phone, lang) VALUES (?, ?) ON CONFLICT(phone) DO UPDATE SET lang = excluded.lang",
+                     (phone, lang))
 
 
 def clear_all() -> None:

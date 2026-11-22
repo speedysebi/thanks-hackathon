@@ -11,6 +11,7 @@
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
   <script src="/static/pwa.js" defer></script>
   <script src="/static/nav.js" defer></script>
+  <script src="/static/edit.js" defer></script>
   <style>
     main { max-width: 640px; }
     .head { display: flex; gap: 10px; align-items: end; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; }
@@ -45,17 +46,20 @@
     <div class="tiles" id="tiles"></div>
     <section class="card"><h2>Follow-ups you still owe <span class="pill" id="fuCount">0</span></h2><div id="followups"></div></section>
     <section class="card"><h2>Everything you logged</h2><div id="notes"></div></section>
+    <section class="card" id="phoneCard"><h2>Texting from your phone</h2><div id="phoneBox"></div></section>
   </div>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (n) => Number(n).toLocaleString();
+let byId = {};
 
 async function load() {
   const r = await fetch('/api/my/entries?days=' + $('days').value);
   if (r.status === 401) { $('signedOut').classList.remove('hidden'); $('signedIn').classList.add('hidden'); return; }
   const { name, entries, totals } = await r.json();
+  byId = Object.fromEntries(entries.map((e) => [e.id, e]));
   $('signedOut').classList.add('hidden'); $('signedIn').classList.remove('hidden');
   $('name').textContent = name;
   $('tiles').innerHTML = [['People helped', totals.people], ['Youth', totals.youth], ['Activities', totals.activities], ['Hours', totals.hours]]
@@ -69,10 +73,12 @@ async function load() {
 function row(e, fu) {
   const meta = [e.activity_date, e.activity_type.replaceAll('_', ' '), e.people_served ? `${e.people_served} people` : '', e.neighborhood].filter(Boolean).join(' · ');
   return `<div class="note"><div class="top"><div>${esc(fu ? (e.follow_up || e.summary) : e.summary)}</div>
-    <div class="acts">${fu ? `<button class="ghost" data-done="${e.id}">✓ Done</button>` : `<button class="ghost" data-del="${e.id}" aria-label="Remove note ${e.id}">Remove</button>`}</div></div>
+    <div class="acts"><button class="ghost" data-edit="${e.id}" aria-label="Fix note ${e.id}">Fix</button>${fu ? `<button class="ghost" data-done="${e.id}">✓ Done</button>` : `<button class="ghost" data-del="${e.id}" aria-label="Remove note ${e.id}">Remove</button>`}</div></div>
     <div class="small muted">${esc(meta)}</div></div>`;
 }
 document.addEventListener('click', async (ev) => {
+  const ed = ev.target.closest('button[data-edit]');
+  if (ed) { window.editEntry(byId[ed.dataset.edit], load); return; }
   const b = ev.target.closest('button[data-done], button[data-del]'); if (!b) return;
   if (b.dataset.del && !confirm('Remove this note? It will no longer count in ComForce\'s totals.')) return;
   b.disabled = true;
@@ -83,8 +89,33 @@ document.addEventListener('click', async (ev) => {
   if (!r.ok) alert('That did not work (' + r.status + ').');
   load();
 });
+async function loadPhone() {
+  const r = await fetch('/api/my/phone'); if (!r.ok) return;
+  const { phones } = await r.json();
+  $('phoneBox').innerHTML = phones.length
+    ? `<p class="small">Texts from your phone ending in <b>${phones.map(esc).join(', ')}</b> count as yours and show here.</p>
+       <button class="ghost" id="unlink">Stop linking texts</button>`
+    : `<p class="small muted">If you also text your notes in, link your phone so those texts show here too.</p>
+       <button class="ghost" id="link">Link my phone</button><div id="code"></div>`;
+}
+document.addEventListener('click', async (ev) => {
+  if (ev.target.id === 'link') {
+    ev.target.disabled = true;
+    const r = await fetch('/api/my/phone/code', { method: 'POST' });
+    if (!r.ok) { alert('That did not work (' + r.status + ').'); ev.target.disabled = false; return; }
+    const { code, minutes, sms_number } = await r.json();
+    $('code').innerHTML = `<p>From your phone, text <b style="font-size:22px;letter-spacing:1px">LINK ${esc(code)}</b>
+      to ${sms_number ? `<b>${esc(sms_number)}</b>` : 'the ComForce texting number'}.</p>
+      <p class="small muted">The code works once, for ${minutes} minutes. Then <a href="#" id="recheck">check again</a>.</p>`;
+  } else if (ev.target.id === 'recheck') {
+    ev.preventDefault(); await loadPhone(); load();
+  } else if (ev.target.id === 'unlink') {
+    if (!confirm('Stop counting new texts from this phone as yours? Notes already here stay.')) return;
+    await fetch('/api/my/phone', { method: 'DELETE' }); loadPhone();
+  }
+});
 $('days').onchange = load;
-load();
+load().then(loadPhone);
 </script>
 </body>
 </html>

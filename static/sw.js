@@ -1,9 +1,9 @@
 // ImpactText service worker: lets the installed app open with no signal.
 // Pages and styles: network first, cached copy when offline. API calls are never cached
 // (notes typed offline are queued by the log page itself and sent when the phone is back online).
-const CACHE = 'impacttext-v3';
+const CACHE = 'impacttext-v4';
 // only pages everyone can open: admin pages redirect to sign-in, and a cached redirect breaks offline navigation
-const SHELL = ['/', '/phone', '/login', '/me', '/security', '/static/style.css', '/static/nav.js', '/static/pwa.js',
+const SHELL = ['/', '/phone', '/login', '/me', '/security', '/static/style.css', '/static/nav.js', '/static/pwa.js', '/static/edit.js',
                '/static/icons/icon-192.png', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

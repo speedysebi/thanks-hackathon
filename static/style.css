@@ -60,4 +60,4 @@ nav .signin { color: var(--ink); border: 1px solid var(--line); }
   nav .tabs { order: 3; flex: 1 0 100%; overflow-x: auto; scrollbar-width: none; margin: 2px -16px 0; padding: 2px 16px; }
   nav .tabs::-webkit-scrollbar { display: none; }
   nav .tabs a.tab { white-space: nowrap; }
-}
+}.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

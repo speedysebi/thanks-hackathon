@@ -25,6 +25,7 @@ import hashlib
 import hmac
 import os
 import re
+import secrets
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -38,7 +39,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app import auth, console, db, extract, impact, integrations, llm, metrics, monthly_report, privacy
+from app import auth, console, db, extract, impact, integrations, llm, metrics, monthly_report, privacy, sms_text
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 app = FastAPI(title="ImpactText")
@@ -204,6 +205,46 @@ def my_entries(request: Request, days: int = 30):
                        "follow_ups": sum(e["outcome"] == "needs_follow_up" for e in mine)}}
 
 
+# ---------- linking a texting phone to an account (My notes) ----------
+LINK_MINUTES = 15
+
+
+def _person(request: Request) -> dict:
+    u = auth.current_user(request)
+    if not u or not u["id"]:  # the built-in admin isn't a person with a phone
+        raise HTTPException(401, "Sign in with your own account first.")
+    return u
+
+
+@app.get("/api/my/phone")
+def my_phone(request: Request):
+    u = _person(request)
+    return {"phones": db.phones_for_user(u["id"]), "sms_number": os.getenv("SMS_NUMBER", "")}
+
+
+@app.post("/api/my/phone/code")
+def my_phone_code(request: Request):
+    """A 6-digit code to text from the phone (LINK 123456). Texting it proves the phone is yours:
+    Twilio signs every real text, so nobody can send it from your number but you."""
+    u = _person(request)
+    for _ in range(20):
+        code = f"{secrets.randbelow(10**6):06d}"
+        try:
+            db.set_link_code(u["id"], code, LINK_MINUTES)
+            break
+        except db.sqlite3.IntegrityError:  # someone else holds that code right now
+            continue
+    else:
+        raise HTTPException(503, "Try again in a moment.")
+    return {"code": code, "minutes": LINK_MINUTES, "sms_number": os.getenv("SMS_NUMBER", "")}
+
+
+@app.delete("/api/my/phone")
+def my_phone_unlink(request: Request):
+    u = _person(request)
+    return {"unlinked": db.unlink_phones(u["id"])}
+
+
 class EntryPatch(BaseModel):
     activity_type: Literal[tuple(extract.ACTIVITY_TYPES)] | None = None
     outcome: Literal[tuple(extract.OUTCOMES)] | None = None
@@ -213,6 +254,16 @@ class EntryPatch(BaseModel):
     neighborhood: str | None = Field(default=None, max_length=80)
     follow_up: str | None = Field(default=None, max_length=300)
     hours: float | None = Field(default=None, ge=0, le=24)
+    activity_date: date | None = None  # "that was yesterday, not today"
+
+    @field_validator("activity_date")
+    @classmethod
+    def not_future(cls, v: date | None) -> date | None:
+        if v and v > date.today() + timedelta(days=1):  # one day of slack for time zones
+            raise ValueError("that day hasn't happened yet")
+        if v and v < date.today() - timedelta(days=3650):
+            raise ValueError("that day is too long ago")
+        return v
 
 
 def _own(request: Request, entry_id: int, undo: str | None = None) -> dict:
@@ -228,7 +279,10 @@ def _own(request: Request, entry_id: int, undo: str | None = None) -> dict:
 def api_update(entry_id: int, body: EntryPatch, request: Request):
     _own(request, entry_id, request.headers.get("X-Undo-Token"))
     try:
-        entry = db.update(entry_id, body.model_dump(exclude_none=True))
+        changes = body.model_dump(exclude_none=True)
+        if "activity_date" in changes:
+            changes["activity_date"] = changes["activity_date"].isoformat()
+        entry = db.update(entry_id, changes)
     except db.InvalidEntryCounts as exc:
         raise HTTPException(422, str(exc)) from exc
     if not entry:
@@ -244,13 +298,10 @@ def api_delete(entry_id: int, request: Request):
 
 
 # ---------- SMS (Twilio) ----------
-# "NAME Maria" / "NAME Maria Lopez". A note that just starts with the word ("Name tags for 30 kids") is a note.
-NAME_CMD = re.compile(r"^name\s+([^\d\s][^\d]{0,40}?)\s*$", re.IGNORECASE)
-
-HELP = (
-    "Text what you did, like: fed 20 kids at Sherman Park, sent a mom to 414 LIFE. "
-    "Also: NAME + your name, UNDO, ME (your totals)"
-)
+# "NAME Maria" / "NOMBRE Maria Lopez". A note that just starts with the word ("Name tags for 30 kids") is a note.
+NAME_CMD = re.compile(r"^(name|nombre)\s+([^\d\s][^\d]{0,40}?)\s*$", re.IGNORECASE)
+LINK_CMD = re.compile(r"^(link|enlazar)\s*(\d{6})$", re.IGNORECASE)
+HELP = sms_text.TEXT["en"]["help"]
 
 
 def _twiml(msg: str) -> Response:
@@ -283,36 +334,60 @@ async def sms(request: Request):
         raise HTTPException(403)
     phone, body = form.get("From", "unknown"), form.get("Body", "").strip()
     name = db.worker_name(phone)
-    cmd = body.upper()
+    cmd, word_lang = sms_text.COMMANDS.get(" ".join(body.upper().split()), (None, None))
+
+    def reply(key: str, lang: str | None = None, **kw) -> Response:
+        return _twiml(sms_text.t(lang or sms_text.lang_for(phone, word_lang), key, **kw))
+
+    linking = LINK_CMD.match(" ".join(body.split()))
+    if linking:
+        word_lang = "es" if linking.group(1).lower() == "enlazar" else "en"
+        # 6 digits, 15 minutes. Wrong guesses are limited per phone and across all phones, because
+        # the simulator's fictional numbers are free to send from.
+        if auth._limited("link:" + phone) or auth._limited("link:*", 30):
+            return reply("link_many")
+        user = db.use_link_code(linking.group(2), phone)
+        if not user:
+            auth._fail("link:" + phone)
+            auth._fail("link:*")
+            return reply("link_bad")
+        return reply("linked", name=user["name"][:30])
 
     named = NAME_CMD.match(body)
-    if named and len(named.group(1).split()) <= 3:
-        new_name = named.group(1).strip()[:60]
+    if named and len(named.group(2).split()) <= 3:
+        word_lang = "es" if named.group(1).lower() == "nombre" else "en"
+        new_name = named.group(2).strip()[:60]
         db.set_worker_name(phone, new_name)
-        return _twiml(f"Thanks {new_name[:30]}! Just text what you did any time.")
-    if cmd in ("HELP", "?", "INFO"):
-        return _twiml(HELP)
+        return reply("named", name=new_name[:30])
+    if cmd == "lang":
+        db.set_sms_lang(phone, word_lang)
+        return reply("lang_set", word_lang)
+    if cmd == "help":
+        return reply("help")
     worker = name or f"Volunteer …{phone[-4:]}"
-    if cmd == "UNDO":
+    if cmd == "undo":
         last = db.last_entry_for(phone)  # by phone, so a shared or copied name can't undo someone else's entry
         if last and db.delete(last["id"]):
-            return _twiml(f"Removed #{last['id']}.")
-        return _twiml("Nothing to undo.")
-    if cmd in ("ME", "TOTAL", "STATS"):
+            return reply("removed", id=last["id"])
+        return reply("nothing")
+    if cmd == "me":
         since = date.today().replace(day=1).isoformat()
         mine = db.entries_for_phone(phone, since)
-        people = sum(e["people_served"] for e in mine)
-        return _twiml(f"This month: {len(mine)} activities, {people} people helped. Thank you!")
+        return reply("me", n=len(mine), people=sum(e["people_served"] for e in mine))
     if len(body) < 3:
-        return _twiml(HELP)
+        return reply("help")
 
-    entry = log_note(body, worker, "sms", phone)
+    lang = sms_text.lang_for(phone, body=body)
+    account = db.linked_user(phone)
+    if account:
+        worker = account["name"]
+    entry = log_note(body, worker, "sms", phone, user_id=account["id"] if account else None)
     if entry.get("duplicate"):
-        return _twiml(f"Already got that one (#{entry['id']}). Nothing new was added.")
-    reply = extract.confirmation(entry) + " UNDO to remove."
-    if not name:
-        reply += " Text NAME + your name for credit."
-    return _twiml(reply)
+        return reply("dup", lang, id=entry["id"])
+    text = sms_text.confirmation(entry, lang) + sms_text.t(lang, "undo_hint")
+    if not name and not account:
+        text += sms_text.t(lang, "name_hint")
+    return _twiml(text)
 
 
 # ---------- numbers + report ----------

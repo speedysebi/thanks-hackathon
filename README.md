@@ -27,7 +27,7 @@ That one line becomes a clean record (activity, people served, youth, neighborho
 
 ## Try it (about 2 minutes)
 
-For a hosted demo or a production launch, follow the [website setup and launch checklist](docs/LAUNCH_CHECKLIST.md).
+To put it online for ComForce, follow the [website setup and launch checklist](docs/LAUNCH_CHECKLIST.md).
 
 Python 3.13, from the repo root:
 ```powershell

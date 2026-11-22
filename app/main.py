@@ -222,7 +222,13 @@ def _own(request: Request, entry_id: int, undo: str | None = None) -> dict:
 @app.patch("/api/entries/{entry_id}")
 def api_update(entry_id: int, body: EntryPatch, request: Request):
     _own(request, entry_id, request.headers.get("X-Undo-Token"))
-    return db.update(entry_id, body.model_dump(exclude_none=True))
+    try:
+        entry = db.update(entry_id, body.model_dump(exclude_none=True))
+    except db.InvalidEntryCounts as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if not entry:
+        raise HTTPException(404)
+    return entry
 
 
 @app.delete("/api/entries/{entry_id}")
